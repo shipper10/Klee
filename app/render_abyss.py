@@ -22,7 +22,7 @@ from app.ui_kit import (
     to_png,
 )
 
-REPORT_VERSION = "abyss-v1"
+REPORT_VERSION = "abyss-v2"
 W = 1080
 PAD = 48
 INNER = W - 2 * PAD

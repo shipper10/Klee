@@ -8,6 +8,7 @@ A failed download is not an error: the renderer draws a placeholder instead.
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 from collections import Counter, OrderedDict
 from collections.abc import Iterable, Sequence
@@ -15,6 +16,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 import aiohttp
+from PIL import Image
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +48,15 @@ class FetchResult:
 
     def summary(self, limit: int = 3) -> str:
         return "; ".join(f"{r} x{n}" for r, n in self.reasons.most_common(limit))
+
+
+def _is_image(data: bytes) -> bool:
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            im.verify()
+        return True
+    except Exception:
+        return False
 
 
 def _host(url: str) -> str:
@@ -96,6 +107,9 @@ class ImageFetcher:
         for attempt in range(2):  # one retry for rate limits, server errors and timeouts
             data, reason, retry = await self._attempt(url)
             if data is not None:
+                if not _is_image(data):
+                    log.info("icon is not a valid image: %s", url[:120])
+                    return None, f"not an image {_host(url)}"
                 self._remember(url, data)
                 return data, ""
             if not retry:
