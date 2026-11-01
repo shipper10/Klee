@@ -1,0 +1,6 @@
+python-telegram-bot==22.8
+supabase==2.33.0
+cryptography==50.0.2
+aiohttp==3.14.5
+Pillow==13.0.0
+genshin==1.7.31

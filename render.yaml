@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: klee-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.main
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Render generates a random 256-bit base64 value once; it is never regenerated on later syncs.
+      - key: CREDENTIAL_ENCRYPTION_KEY
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: CREDENTIAL_ENCRYPTION_KEY_VERSION
+        value: v1
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
