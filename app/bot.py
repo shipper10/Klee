@@ -50,6 +50,7 @@ COMMANDS = [
     BotCommand("profile", "Profile overview + top characters"),
     BotCommand("characters", "All your characters"),
     BotCommand("character", "Details of one character: /character Furina"),
+    BotCommand("share", "Let group members view your reports (on/off)"),
     BotCommand("unlink", "Remove a linked account"),
     BotCommand("privacy", "What is stored and why"),
     BotCommand("help", "Help"),
@@ -68,9 +69,13 @@ HELP_TEXT = (
     "/profile – account overview with your top characters\n"
     "/characters – all your characters\n"
     "/character <name> – weapon, artifacts, talents and stats of one character\n"
+    "/share on|off – let group members view your reports (reply to your message with a command)\n"
+    "/groupreports on|off – group admins: enable or disable the bot in a group\n"
     "/unlink – remove an account and its stored session\n"
     "/privacy – what I store\n\n"
-    "Coming later: Theater, Stygian, profile, Diary, Wishes, group sharing.\n"
+    "In groups: use the same commands for yourself, or reply to someone's message with a command "
+    "if they turned on /share. Linking stays in private chat.\n"
+    "Coming later: Diary, Wishes, easier phone linking.\n"
     "Unofficial community tool, not affiliated with HoYoverse."
 )
 
@@ -80,6 +85,7 @@ PRIVACY_TEXT = (
     "• For each linked game account: UID, server, nickname.\n"
     "• The HoYoLAB session cookies you provide, encrypted (AES-256-GCM). I never ask for your password.\n"
     "• Short-lived cached report data (Daily Notes: a few minutes).\n"
+    "• Whether you allowed group sharing (/share, off by default) and each group's on/off setting.\n"
     "• A minimal audit log (what happened, when, no secrets).\n\n"
     "Why: to read your Battle Chronicle data on your request. The bot only reads; it never changes your account.\n"
     "Risk: those cookies are also your HoYoLAB login. A spare account is safest.\n"
@@ -97,6 +103,7 @@ class Deps:
     images: ImageFetcher = field(default_factory=ImageFetcher)
     cooldowns: dict[int, float] = field(default_factory=dict)
     admin_ids: tuple[int, ...] = ()
+    chat_cooldowns: dict[int, float] = field(default_factory=dict)
     icon_sync: Any = None  # async (force: bool) -> object with .text(); None when no persistent store
 
 
@@ -106,6 +113,117 @@ def _deps(context: ContextTypes.DEFAULT_TYPE) -> Deps:
 
 def _private(update: Update) -> bool:
     return bool(update.effective_chat and update.effective_chat.type == ChatType.PRIVATE)
+
+
+GROUP_CHAT_SECONDS = 3.0  # at most one report per group every few seconds, whoever asks
+
+
+def _in_group(update: Update) -> bool:
+    return bool(update.effective_chat and update.effective_chat.type in (ChatType.GROUP, ChatType.SUPERGROUP))
+
+
+def _pick_default(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return next((r for r in rows if r["is_default"]), rows[0])
+
+
+async def _resolve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[dict[str, Any], int] | None:
+    """Which account should a report command use? Returns (account, asking_user_id) or None after replying.
+
+    Private chat: your own default account. Group: your own account, or (when you reply to someone's message)
+    that person's account, but only if they turned on /share. Groups can be switched off by an admin.
+    """
+    message, deps = update.effective_message, _deps(context)
+    me = update.effective_user.id
+    if _private(update):
+        rows = await deps.db.list_accounts(me)
+        if not rows:
+            await message.reply_text("You have no linked accounts yet. Use /link.")
+            return None
+        return _pick_default(rows), me
+    if not _in_group(update):
+        return None
+    chat_id = update.effective_chat.id
+    if not await deps.db.group_reports_enabled(chat_id):
+        await message.reply_text("Reports are turned off in this group by an admin.")
+        return None
+    now = time.monotonic()
+    if now - deps.chat_cooldowns.get(chat_id, 0.0) < GROUP_CHAT_SECONDS:
+        return None  # silent: avoids flooding the group
+    deps.chat_cooldowns[chat_id] = now
+    if len(deps.chat_cooldowns) > 2000:
+        for cid in [c for c, t in deps.chat_cooldowns.items() if t < now - 3600]:
+            deps.chat_cooldowns.pop(cid, None)
+
+    target = message.reply_to_message.from_user if message.reply_to_message else None
+    if target is not None and not target.is_bot and target.id != me:
+        rows = [r for r in await deps.db.list_accounts(target.id) if r.get("shared_in_groups")]
+        if not rows:
+            await message.reply_text(
+                f"{target.first_name or 'That user'} has not linked an account or has not allowed sharing in groups."
+            )
+            return None
+        return _pick_default(rows), me
+    rows = await deps.db.list_accounts(me)
+    if not rows:
+        await message.reply_text("You have no linked accounts yet. Open a private chat with me and use /link.")
+        return None
+    return _pick_default(rows), me
+
+
+async def share(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/share on|off: let other group members view your reports by replying to your message with a command."""
+    if not await _private_only(update):
+        return
+    deps, user_id = _deps(context), update.effective_user.id
+    rows = await deps.db.list_accounts(user_id)
+    if not rows:
+        await update.effective_message.reply_text("You have no linked accounts yet. Use /link.")
+        return
+    arg = context.args[0].lower() if context.args else ""
+    if arg in ("on", "off"):
+        try:
+            await deps.db.set_sharing(user_id, arg == "on")
+        except Exception as exc:
+            log.error("set_sharing failed: %s", type(exc).__name__)
+            await update.effective_message.reply_text("Sharing is not available yet (the database update has not been applied).")
+            return
+        rows = await deps.db.list_accounts(user_id)
+    on = any(r.get("shared_in_groups") for r in rows)
+    await update.effective_message.reply_text(
+        f"Sharing in groups is {'ON' if on else 'OFF'}.\n"
+        "When ON, someone in a group chat who replies to one of your messages with a report command "
+        "(for example /abyss) sees the report for your default account: your nickname, a partly hidden UID, "
+        "server and game data. Nothing else is shared, and nobody can see your cookies.\n"
+        "Use /share on or /share off. You can always use the commands for yourself in any group."
+    )
+
+
+async def groupreports(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/groupreports on|off: group admins switch the bot's reports on or off for this group."""
+    if not _in_group(update):
+        await update.effective_message.reply_text("Use this command inside the group you want to change.")
+        return
+    deps, chat_id, user_id = _deps(context), update.effective_chat.id, update.effective_user.id
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        is_admin = member.status in ("administrator", "creator")
+    except Exception:
+        is_admin = False
+    if not is_admin:
+        await update.effective_message.reply_text("Only group admins can change this.")
+        return
+    arg = context.args[0].lower() if context.args else ""
+    if arg in ("on", "off"):
+        try:
+            await deps.db.set_group_reports(chat_id, arg == "on", user_id)
+        except Exception as exc:
+            log.error("set_group_reports failed: %s", type(exc).__name__)
+            await update.effective_message.reply_text("Could not save the setting (the database update has not been applied).")
+            return
+    enabled = await deps.db.group_reports_enabled(chat_id)
+    await update.effective_message.reply_text(
+        f"Reports are {'ON' if enabled else 'OFF'} in this group. Use /groupreports on or /groupreports off."
+    )
 
 
 def _label(account: dict[str, Any]) -> str:
@@ -450,19 +568,10 @@ async def _send_theater(
 
 async def theater(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    if not _private(update):
-        await message.reply_text(
-            "Reports in groups need the account owner's sharing permission, which is not available yet. "
-            "Please use /theater in a private chat with me."
-        )
+    resolved = await _resolve(update, context)
+    if resolved is None:
         return
-    deps = _deps(context)
-    user_id = update.effective_user.id
-    rows = await deps.db.list_accounts(user_id)
-    if not rows:
-        await message.reply_text("You have no linked accounts yet. Use /link.")
-        return
-    account = next((r for r in rows if r["is_default"]), rows[0])
+    account, user_id = resolved
     args = [a.lower() for a in context.args or []]
     show_all = "all" in args
     previous = any(a in ("previous", "prev", "last") for a in args)
@@ -518,19 +627,10 @@ async def _send_stygian(
 
 async def stygian(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    if not _private(update):
-        await message.reply_text(
-            "Reports in groups need the account owner's sharing permission, which is not available yet. "
-            "Please use /stygian in a private chat with me."
-        )
+    resolved = await _resolve(update, context)
+    if resolved is None:
         return
-    deps = _deps(context)
-    user_id = update.effective_user.id
-    rows = await deps.db.list_accounts(user_id)
-    if not rows:
-        await message.reply_text("You have no linked accounts yet. Use /link.")
-        return
-    account = next((r for r in rows if r["is_default"]), rows[0])
+    account, user_id = resolved
     args = [a.lower() for a in context.args or []]
     previous = any(a in ("previous", "prev", "last") for a in args)
     multi = any(a in ("coop", "co-op", "multi", "mp") for a in args)
@@ -585,37 +685,19 @@ async def _send_character(
 
 async def character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    if not _private(update):
-        await message.reply_text(
-            "Reports in groups need the account owner's sharing permission, which is not available yet. "
-            "Please use /character in a private chat with me."
-        )
+    resolved = await _resolve(update, context)
+    if resolved is None:
         return
-    deps = _deps(context)
-    user_id = update.effective_user.id
-    rows = await deps.db.list_accounts(user_id)
-    if not rows:
-        await message.reply_text("You have no linked accounts yet. Use /link.")
-        return
-    account = next((r for r in rows if r["is_default"]), rows[0])
+    account, user_id = resolved
     await _send_character(context, update.effective_chat.id, user_id, account, " ".join(context.args or []))
 
 
 async def _profile_entry(update: Update, context: ContextTypes.DEFAULT_TYPE, show_all: bool, command: str) -> None:
     message = update.effective_message
-    if not _private(update):
-        await message.reply_text(
-            "Reports in groups need the account owner's sharing permission, which is not available yet. "
-            f"Please use /{command} in a private chat with me."
-        )
+    resolved = await _resolve(update, context)
+    if resolved is None:
         return
-    deps = _deps(context)
-    user_id = update.effective_user.id
-    rows = await deps.db.list_accounts(user_id)
-    if not rows:
-        await message.reply_text("You have no linked accounts yet. Use /link.")
-        return
-    account = next((r for r in rows if r["is_default"]), rows[0])
+    account, user_id = resolved
     await _send_profile(context, update.effective_chat.id, user_id, account, show_all)
 
 
@@ -640,41 +722,25 @@ def _parse_abyss_args(args: list[str]) -> tuple[bool, int | None]:
 
 async def abyss(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    if not _private(update):
-        await message.reply_text(
-            "Reports in groups need the account owner's sharing permission, which is not available yet. "
-            "Please use /abyss in a private chat with me."
-        )
+    resolved = await _resolve(update, context)
+    if resolved is None:
         return
-    deps = _deps(context)
-    user_id = update.effective_user.id
-    rows = await deps.db.list_accounts(user_id)
-    if not rows:
-        await message.reply_text("You have no linked accounts yet. Use /link.")
-        return
+    account, user_id = resolved
     previous, floor = _parse_abyss_args(context.args or [])
-    account = next((r for r in rows if r["is_default"]), rows[0])
     await _send_abyss(context, update.effective_chat.id, user_id, account, previous, floor)
 
 
 async def notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    if not _private(update):
-        await message.reply_text(
-            "Reports in groups need the account owner's sharing permission, which is not available yet. "
-            "Please use /notes in a private chat with me."
-        )
+    if _private(update) and context.args and context.args[0].lower() == "pick":
+        rows = await _deps(context).db.list_accounts(update.effective_user.id)
+        if len(rows) > 1:
+            await message.reply_text("Which account?", reply_markup=_keyboard("notes", rows))
+            return
+    resolved = await _resolve(update, context)
+    if resolved is None:
         return
-    deps = _deps(context)
-    user_id = update.effective_user.id
-    rows = await deps.db.list_accounts(user_id)
-    if not rows:
-        await message.reply_text("You have no linked accounts yet. Use /link.")
-        return
-    if context.args and context.args[0].lower() == "pick" and len(rows) > 1:
-        await message.reply_text("Which account?", reply_markup=_keyboard("notes", rows))
-        return
-    account = next((r for r in rows if r["is_default"]), rows[0])
+    account, user_id = resolved
     await _send_notes(context, update.effective_chat.id, user_id, account)
 
 
@@ -701,6 +767,8 @@ def register(application: Application, deps: Deps) -> None:
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("privacy", privacy))
     application.add_handler(CommandHandler("myid", myid))
+    application.add_handler(CommandHandler("share", share))
+    application.add_handler(CommandHandler("groupreports", groupreports))
     application.add_handler(CommandHandler("updateicons", updateicons))
     application.add_handler(CommandHandler("link", link))
     application.add_handler(CommandHandler("accounts", accounts))

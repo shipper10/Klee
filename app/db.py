@@ -98,6 +98,24 @@ class Database:
         )
         return list(res.data)
 
+    async def set_sharing(self, telegram_user_id: int, enabled: bool) -> None:
+        await self._c.table("game_accounts").update({"shared_in_groups": enabled}).eq(
+            "telegram_user_id", telegram_user_id
+        ).execute()
+
+    async def group_reports_enabled(self, chat_id: int) -> bool:
+        """Groups are enabled by default; a missing row or table means enabled."""
+        try:
+            res = await self._c.table("group_settings").select("reports_enabled").eq("chat_id", chat_id).limit(1).execute()
+        except Exception:
+            return True
+        return bool(res.data[0]["reports_enabled"]) if res.data else True
+
+    async def set_group_reports(self, chat_id: int, enabled: bool, updated_by: int) -> None:
+        await self._c.table("group_settings").upsert(
+            {"chat_id": chat_id, "reports_enabled": enabled, "updated_by": updated_by, "updated_at": _iso(utcnow())}
+        ).execute()
+
     async def get_account_for_user(self, account_id: str, telegram_user_id: int) -> dict[str, Any] | None:
         res = (
             await self._c.table("game_accounts")

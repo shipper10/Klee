@@ -159,3 +159,13 @@ HoYoLAB's `character/detail` for just that id (`return_raw_data=True`, parsed in
 Card: portrait/level/constellation/friendship, weapon with main and sub stat, five artifacts with main stat and four
 substats, set bonuses, attributes, talents (level > 0 only) and constellation circles. Profile cache schema is now 2
 (`ProfChar.id`). Not yet verified on a real payload; the property names come from the response's own `property_map`.
+
+## Milestone 7: groups (2 Nov 2026)
+Rules: linking and account management stay private-chat only. In a group, a report command shows the *asker's own*
+default account. Replying to another member's message with a report command shows that member's default account only
+if they ran `/share on` (per-account flag `shared_in_groups`, off by default; revocable any time). Group admins can
+turn the bot off/on with `/groupreports on|off` (table `group_settings`, groups are enabled by default; a missing table
+means enabled). Abuse limits: the asker's 10 s cooldown applies, plus one report per group every 3 s (silent).
+The shared image shows nickname, masked UID, server and game data only; cookies are never reachable from a group.
+Requires `supabase/migrations/002_groups.sql` (adds the flag and the table); until it is applied, `/share` and
+`/groupreports` answer that the database update is pending and everything else keeps working.
