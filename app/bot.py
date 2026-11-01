@@ -28,6 +28,7 @@ from app.linking import TOKEN_TTL, hash_token, new_token, utcnow
 from app.regions import mask_uid, server_label, server_utc_offset
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
+from app.render_theater import render_theater_card, select_acts
 from app.render_profile import render_profile_card, select_characters
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ COMMANDS = [
     BotCommand("setaccount", "Choose your default account"),
     BotCommand("notes", "Daily Notes image (resin, commissions…)"),
     BotCommand("abyss", "Spiral Abyss report image"),
+    BotCommand("theater", "Imaginarium Theater report image"),
     BotCommand("profile", "Profile overview + top characters"),
     BotCommand("characters", "All your characters"),
     BotCommand("unlink", "Remove a linked account"),
@@ -56,6 +58,7 @@ HELP_TEXT = (
     "/setaccount – choose the default account\n"
     "/notes – Daily Notes image (add “pick” to choose an account)\n"
     "/abyss – Spiral Abyss image (options: previous, or a floor number like 12)\n"
+    "/theater – Imaginarium Theater image (option: all acts)\n"
     "/profile – account overview with your top characters\n"
     "/characters – all your characters\n"
     "/unlink – remove an account and its stored session\n"
@@ -393,6 +396,66 @@ async def _send_profile(
         )
 
 
+async def _send_theater(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], show_all: bool
+) -> None:
+    deps = _deps(context)
+    try:
+        _check_cooldown(deps, user_id)
+        await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
+        result = await deps.provider.get_theater(account)
+        if not result.data.unlocked:
+            raise NoRecords("Imaginarium Theater is not unlocked on this account yet.")
+        acts = select_acts(result.data, show_all)
+        if not result.data.has_data or not acts:
+            raise NoRecords("No Imaginarium Theater records for this season yet.")
+        fetched = await deps.images.fetch_first(result.data.icon_candidates())
+        png = await asyncio.to_thread(
+            render_theater_card,
+            result.data,
+            nickname=account.get("nickname") or "Traveler",
+            icons=fetched.images,
+            acts=acts,
+            tz_hours=server_utc_offset(account["region"]),
+            fetched_at=result.fetched_at,
+            source=result.source,
+        )
+    except BotError as exc:
+        await context.bot.send_message(chat_id, exc.user_message)
+        return
+    except Exception as exc:
+        log.error("theater failed: %s", type(exc).__name__)
+        await context.bot.send_message(chat_id, "Something went wrong. Please try again later.")
+        return
+
+    await context.bot.send_photo(chat_id, photo=io.BytesIO(png), caption=f"Imaginarium Theater · {SOURCE_CAPTIONS[result.source]}")
+    if fetched.failed:
+        await context.bot.send_message(
+            chat_id,
+            f"Note: {fetched.failed} character portrait(s) could not be loaded and show as blank tiles "
+            f"({fetched.summary()}). Please send this line to the developer.",
+        )
+
+
+async def theater(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if not _private(update):
+        await message.reply_text(
+            "Reports in groups need the account owner's sharing permission, which is not available yet. "
+            "Please use /theater in a private chat with me."
+        )
+        return
+    deps = _deps(context)
+    user_id = update.effective_user.id
+    rows = await deps.db.list_accounts(user_id)
+    if not rows:
+        await message.reply_text("You have no linked accounts yet. Use /link.")
+        return
+    account = next((r for r in rows if r["is_default"]), rows[0])
+    show_all = bool(context.args) and context.args[0].lower() == "all"
+    await _send_theater(context, update.effective_chat.id, user_id, account, show_all)
+
+
 async def _profile_entry(update: Update, context: ContextTypes.DEFAULT_TYPE, show_all: bool, command: str) -> None:
     message = update.effective_message
     if not _private(update):
@@ -500,6 +563,7 @@ def register(application: Application, deps: Deps) -> None:
     application.add_handler(CommandHandler("unlink", unlink))
     application.add_handler(CommandHandler("notes", notes))
     application.add_handler(CommandHandler("abyss", abyss))
+    application.add_handler(CommandHandler("theater", theater))
     application.add_handler(CommandHandler("profile", profile))
     application.add_handler(CommandHandler("characters", characters))
     application.add_handler(CallbackQueryHandler(on_setdef, pattern=rf"^setdef:{UUID_PATTERN}$"))

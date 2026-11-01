@@ -139,3 +139,9 @@ known portrait that is not stored yet is downloaded. Manual: `/updateicons` (own
 use `genshin.get_genshin_user` (stats + character list in two requests), cached 10 min. Portraits use the same
 candidate/persistent-store pipeline as the Abyss. Per-character detail (weapon, artifacts, talents) is not drawn yet;
 it needs `get_genshin_detailed_characters` and is a candidate for the next step, with Theater and Stygian.
+
+## Milestone 4: Imaginarium Theater (1 Nov 2026)
+`/theater` (latest 4 acts, `/theater all` for every act) parses HoYoLAB's raw `role_combat` payload directly
+(`TheaterData.from_raw`), so portraits use the same candidate/persistent-store pipeline. Shows the season summary,
+notable characters, each act's cast with Trial/Support tags, Wondrous Booms and Mystery Caches (names only; their icons
+are not drawn). Cached 30 min. Not yet verified against a real payload: field names follow genshin.py's model aliases.

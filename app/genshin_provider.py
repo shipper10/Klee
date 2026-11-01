@@ -20,6 +20,8 @@ from app import notes as notes_mod
 from app.abyss import AbyssData
 from app import profile as profile_mod
 from app.profile import ProfileData
+from app import theater as theater_mod
+from app.theater import TheaterData
 from app.crypto import CredentialCipher, CryptoError
 from app.db import Database
 from app.errors import ChronicleHidden, NotesDisabled, ReauthRequired, UpstreamUnavailable
@@ -32,6 +34,7 @@ NOTES_CACHE_KEY = "notes"
 NOTES_TTL = timedelta(minutes=3)
 ABYSS_TTL = timedelta(minutes=30)
 PROFILE_TTL = timedelta(minutes=10)
+THEATER_TTL = timedelta(minutes=30)
 REQUEST_TIMEOUT_SECONDS = 25
 
 T = TypeVar("T")
@@ -82,6 +85,11 @@ class GenshinProvider:
     async def get_profile(self, account: Mapping[str, Any]) -> Report[ProfileData]:
         return await self._cached(
             account, "profile", PROFILE_TTL, profile_mod.SCHEMA_VERSION, self._fetch_profile, ProfileData.from_json
+        )
+
+    async def get_theater(self, account: Mapping[str, Any]) -> Report[TheaterData]:
+        return await self._cached(
+            account, "theater", THEATER_TTL, theater_mod.SCHEMA_VERSION, self._fetch_theater, TheaterData.from_json
         )
 
     # ---- caching --------------------------------------------------------
@@ -151,6 +159,14 @@ class GenshinProvider:
             return await client.get_genshin_user(uid)
 
         return ProfileData.from_genshin(await self._call(account, call))
+
+    async def _fetch_theater(self, account: Mapping[str, Any]) -> TheaterData:
+        uid = int(account["game_uid"])
+
+        async def call(client: genshin.Client) -> Any:
+            return await client.get_imaginarium_theater(uid, need_detail=True, raw=True)
+
+        return TheaterData.from_raw(await self._call(account, call))
 
     async def _call(self, account: Mapping[str, Any], call: Callable[[genshin.Client], Awaitable[Any]]) -> Any:
         """Run one genshin.py request with decrypted cookies, mapping every failure to a safe BotError."""
