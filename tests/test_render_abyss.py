@@ -130,11 +130,14 @@ def test_from_raw_keeps_original_icon_urls_and_adds_fallback():
     assert ch.timestamp == 1792242500 and ch.stars == 3
     first = ch.first_half[0]
     assert first.icon == "https://act-webstatic.hoyoverse.com/game_record/genshin/character_icon/UI_AvatarIcon_Columbina.png"
-    assert first.alt == "https://enka.network/ui/UI_AvatarIcon_Columbina.png"
+    cands = first.candidates
+    assert cands[0] == "https://enka.network/ui/UI_AvatarIcon_Columbina.png"
+    assert cands[-1] == first.icon  # HoYoLAB's own URL is the last resort
+    assert any(c.startswith("https://gi.yatta.moe/") for c in cands)
     assert ch.first_half[2].rarity == 5  # collaboration characters are stored as 105
     assert data.stats[0].key == "most_kills" and data.stats[0].value == 19
     assert data.most_played[0].value == 6 and "Furina" in data.most_played[0].icon
-    assert data.icon_pairs()[0][1].startswith("https://enka.network/ui/")
+    assert data.icon_candidates()[0][1][0].startswith("https://enka.network/ui/")
 
 
 def test_from_raw_is_lenient_about_missing_fields():
@@ -145,11 +148,18 @@ def test_from_raw_is_lenient_about_missing_fields():
     assert AbyssData.from_json(odd.to_json()) == odd
 
 
-def test_fallback_icon_handles_odd_urls():
-    from app.abyss import fallback_icon
+def test_icon_candidates_handles_odd_urls(monkeypatch):
+    from app.abyss import icon_candidates
 
-    assert fallback_icon("") == "" and fallback_icon("https://x.com/a.png") == ""
-    assert fallback_icon("https://x.com/UI_AvatarIcon_Side_Ayaka.png").endswith("UI_AvatarIcon_Ayaka.png")
+    assert icon_candidates("", 0) == []
+    assert icon_candidates("https://x.com/a.png") == ["https://x.com/a.png"]
+    side = icon_candidates("https://x.com/UI_AvatarIcon_Side_Ayaka.png")
+    assert side[0] == "https://enka.network/ui/UI_AvatarIcon_Ayaka.png"
+    assert icon_candidates("http://x.com/UI_AvatarIcon_Ayaka.png")[-1] == "https://x.com/UI_AvatarIcon_Ayaka.png"
+    monkeypatch.setattr("app.abyss._icon_name_for_id", lambda i: "Ayaka" if i == 7 else "")
+    by_id = icon_candidates("https://x.com/UI_AvatarIcon_Side_Other.png", 7)
+    assert by_id[0] == "https://enka.network/ui/UI_AvatarIcon_Ayaka.png"
+    assert "https://enka.network/ui/UI_AvatarIcon_Other.png" in by_id
 
 
 def test_icon_url_allowlist():

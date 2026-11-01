@@ -289,7 +289,8 @@ async def _send_abyss(
             if floor is not None and result.data.has_data:
                 raise NoRecords(f"No records for Spiral Abyss floor {floor} in this period.")
             raise NoRecords("No Spiral Abyss records for this period yet.")
-        icons = await deps.images.fetch_with_fallbacks(result.data.icon_pairs())
+        fetched = await deps.images.fetch_first(result.data.icon_candidates())
+        icons = fetched.images
         png = await asyncio.to_thread(
             render_abyss_card,
             result.data,
@@ -313,6 +314,13 @@ async def _send_abyss(
     await context.bot.send_photo(
         chat_id, photo=io.BytesIO(png), caption=f"Spiral Abyss ({period} period) · {SOURCE_CAPTIONS[result.source]}"
     )
+    if fetched.failed:
+        # Diagnostics in the chat itself: only icon hosts and HTTP codes, nothing secret.
+        await context.bot.send_message(
+            chat_id,
+            f"Note: {fetched.failed} character portrait(s) could not be loaded and show as blank tiles "
+            f"({fetched.summary()}). Please send this line to the developer.",
+        )
 
 
 def _parse_abyss_args(args: list[str]) -> tuple[bool, int | None]:

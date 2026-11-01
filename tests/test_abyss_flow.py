@@ -105,8 +105,16 @@ class FakeProvider:
 
 
 class FakeImages:
-    async def fetch_with_fallbacks(self, pairs):
-        return {p: _icon(p) for p, _ in pairs}
+    def __init__(self, fail=0):
+        self.fail = fail
+
+    async def fetch_first(self, items):
+        res = images.FetchResult()
+        res.images = {k: _icon(k) for k, _ in items}
+        if self.fail:
+            res.failed = self.fail
+            res.reasons.update({"HTTP 404 enka.network": self.fail})
+        return res
 
 
 def ctx(provider):
@@ -195,11 +203,15 @@ async def test_image_fetcher_blocks_disallowed_hosts():
     await f.close()
 
 
-async def test_fetch_with_fallbacks_uses_alt_only_when_primary_fails(monkeypatch):
+async def test_fetch_first_tries_candidates_in_order(monkeypatch):
+    hits = []
+
     async def ok(request):
+        hits.append("ok")
         return web.Response(body=_icon("a"), content_type="image/png")
 
     async def missing(request):
+        hits.append("missing")
         return web.Response(status=404)
 
     app = web.Application()
@@ -209,10 +221,40 @@ async def test_fetch_with_fallbacks_uses_alt_only_when_primary_fails(monkeypatch
         monkeypatch.setattr(images, "is_allowed_url", lambda u: True)
         base = str(server.make_url("/"))
         f = images.ImageFetcher()
-        got = await f.fetch_with_fallbacks([
-            (base + "ok", base + "missing"),       # primary works, fallback must not be needed
-            (base + "missing", base + "ok"),       # primary 404 -> falls back
-            (base + "missing", ""),                # nothing works -> absent (placeholder)
+        res = await f.fetch_first([
+            ("first_ok", [base + "ok", base + "missing"]),
+            ("second_ok", [base + "missing", base + "ok"]),
+            ("none", [base + "missing"]),
+            ("empty", []),
         ])
         await f.close()
-    assert set(got) == {base + "ok", base + "missing"} and got[base + "missing"] == got[base + "ok"]
+    assert set(res.images) == {"first_ok", "second_ok"}
+    assert res.failed == 2 and "HTTP 404" in res.summary()
+
+
+async def test_fetch_retries_rate_limit_once(monkeypatch):
+    calls = []
+
+    async def flaky(request):
+        calls.append(1)
+        if len(calls) == 1:
+            return web.Response(status=429)
+        return web.Response(body=_icon("b"), content_type="image/png")
+
+    app = web.Application()
+    app.router.add_get("/flaky", flaky)
+    async with TestServer(app) as server:
+        monkeypatch.setattr(images, "is_allowed_url", lambda u: True)
+        f = images.ImageFetcher()
+        res = await f.fetch_first([("k", [str(server.make_url("/flaky"))])])
+        await f.close()
+    assert "k" in res.images and len(calls) == 2
+
+
+async def test_send_abyss_reports_portrait_failures_in_chat():
+    prov = FakeProvider(sample())
+    c = ctx(prov)
+    c.application.bot_data["deps"].images = FakeImages(fail=2)
+    await bot._send_abyss(c, 1, 120, ACCOUNT, previous=False, floor=None)
+    assert c.bot.photos and "2 character portrait(s)" in c.bot.messages[-1][1]
+    assert "HTTP 404 enka.network" in c.bot.messages[-1][1]

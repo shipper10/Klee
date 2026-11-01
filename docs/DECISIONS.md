@@ -102,7 +102,7 @@ Three characters showed placeholders in every chamber, so the cause is specific 
 Most likely cause (not confirmed, the sandbox cannot reach enka.network): genshin.py replaces each character icon with
 `https://enka.network/ui/UI_AvatarIcon_<name>.png`, and that file is missing for some characters.
 Fix: the Abyss payload is now parsed directly (`AbyssData.from_raw`), so the icon URL is the one HoYoLAB itself returns
-(what the official site displays); the enka.network copy is only a fallback (`ImageFetcher.fetch_with_fallbacks`).
+(what the official site displays); the enka.network copy is only a fallback (`ImageFetcher.fetch_first`).
 Every failed download is now logged with its URL and reason (HTTP status or error class), so if a portrait is still
 missing the Render log says exactly why. Cache schema bumped to 2 so old cached Abyss data is refreshed.
 
@@ -114,3 +114,10 @@ missing the Render log says exactly why. Cache schema bumped to 2 so old cached 
   third-party packages that a Telegram bot does not otherwise need (discord.py, redis, sentry, enka, ambr, yatta, hakushin...).
 - AGPL-3.0 would apply to Klee if any of its code were copied.
 It remains a good layout and data-handling reference, but a drop-in second style is not available.
+
+## Milestone 2.2: portraits, second attempt (1 Nov 2026)
+Preferring HoYoLAB's raw icon URL (2.1) made things worse: more portraits went blank (the raw URL is often the small
+"side" icon or refuses hotlinking). Now each portrait has an ordered candidate list: enka.network by character id (the
+first version, worked for most) -> enka.network by the name in HoYoLAB's URL -> gi.yatta.moe -> HoYoLAB's URL.
+Downloads retry once on 429/5xx/timeouts. If any portrait still fails, the bot sends a "Note:" line in the chat with the
+HTTP codes/hosts, so diagnosis does not depend on Render logs. Cache schema bumped to 3.

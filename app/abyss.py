@@ -8,25 +8,52 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 _ICON_NAME = re.compile(r"UI_AvatarIcon(?:_Side)?_(.+?)\.png")
 
 
-def fallback_icon(url: str) -> str:
-    """enka.network copy of a HoYoLAB character icon (same UI_AvatarIcon_<name>.png naming), or "" if unknown."""
-    m = _ICON_NAME.search(url or "")
-    return f"https://enka.network/ui/UI_AvatarIcon_{m.group(1)}.png" if m else ""
+def _icon_name_for_id(char_id: int) -> str:
+    """Icon file name genshin.py knows for a character id (its table comes from Enka/Ambr), or ""."""
+    try:
+        from genshin.models.genshin import constants as gc
+
+        entry = gc.CHARACTER_NAMES.get("en-us", {}).get(char_id)
+        return str(getattr(entry, "icon_name", "") or "")
+    except Exception:  # the table is optional; never let it break a report
+        return ""
+
+
+def icon_candidates(raw_url: str, char_id: int = 0) -> list[str]:
+    """Download candidates for one character portrait, best first.
+
+    1. enka.network by character id (what the first version used; worked for most characters),
+    2. enka.network by the name inside HoYoLAB's own URL,
+    3. the same name on gi.yatta.moe,
+    4. HoYoLAB's URL itself (may be the small side icon, but better than a placeholder).
+    """
+    names = [n for n in (_icon_name_for_id(char_id) if char_id else "",) if n]
+    m = _ICON_NAME.search(raw_url or "")
+    if m:
+        names.append(m.group(1))
+    out: list[str] = []
+    for n in dict.fromkeys(names):
+        out.append(f"https://enka.network/ui/UI_AvatarIcon_{n}.png")
+    for n in dict.fromkeys(names[-1:]):
+        out.append(f"https://gi.yatta.moe/assets/UI/UI_AvatarIcon_{n}.png")
+    if raw_url:
+        out.append("https://" + raw_url[len("http://"):] if raw_url.startswith("http://") else raw_url)
+    return list(dict.fromkeys(out))
 
 
 @dataclass
 class Char:
-    icon: str  # URL exactly as HoYoLAB returns it (what the official site shows)
+    icon: str  # lookup key: the URL HoYoLAB returned (or the first candidate if it returned none)
     level: int = 0
     rarity: int = 4
     value: int = 0  # play count / stat value, depending on where it is used
-    alt: str = ""  # fallback icon URL, used only if `icon` cannot be downloaded
+    candidates: list[str] = field(default_factory=list)  # download URLs, best first
 
 
 @dataclass
@@ -107,10 +134,10 @@ class AbyssData:
     def icon_urls(self) -> list[str]:
         return [u for u in dict.fromkeys(c.icon for c in self._all_chars()) if u]
 
-    def icon_pairs(self) -> list[tuple[str, str]]:
-        """(primary, fallback) for every distinct icon."""
-        pairs = {c.icon: c.alt for c in self._all_chars() if c.icon}
-        return list(pairs.items())
+    def icon_candidates(self) -> list[tuple[str, list[str]]]:
+        """(lookup key, download candidates) for every distinct icon."""
+        found = {c.icon: c.candidates for c in self._all_chars() if c.icon}
+        return list(found.items())
 
     @property
     def has_data(self) -> bool:
@@ -120,8 +147,7 @@ class AbyssData:
     def from_raw(cls, raw: Mapping[str, Any]) -> "AbyssData":
         """Parse the raw HoYoLAB `spiralAbyss` payload (field names taken from genshin.py 1.7.31's model aliases).
 
-        Parsed directly, not through genshin.py's model, because that model replaces every character icon with an
-        enka.network URL, which is missing for some (usually new) characters.
+        Parsed directly so that every icon URL HoYoLAB returns is kept as the last-resort download candidate.
         """
 
         def to_int(v: Any, default: int = 0) -> int:
@@ -139,7 +165,8 @@ class AbyssData:
 
         def char(item: Mapping[str, Any], key: str = "icon", **extra: Any) -> Char:
             url = icon_of(item, key)
-            return Char(icon=url, rarity=rarity_of(item.get("rarity")), alt=fallback_icon(url), **extra)
+            cands = icon_candidates(url, to_int(item.get("id") or item.get("avatar_id")))
+            return Char(icon=url or (cands[0] if cands else ""), rarity=rarity_of(item.get("rarity")), candidates=cands, **extra)
 
         stats: list[Stat] = []
         for key, rank_key in (

@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections import OrderedDict
-from collections.abc import Iterable
+from collections import Counter, OrderedDict
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 import aiohttp
@@ -37,8 +38,22 @@ def is_allowed_url(url: str) -> bool:
     return host in ALLOWED_HOSTS or any(host.endswith(s) for s in ALLOWED_HOST_SUFFIXES)
 
 
+@dataclass
+class FetchResult:
+    images: dict[str, bytes] = field(default_factory=dict)
+    failed: int = 0  # items for which no candidate could be downloaded
+    reasons: Counter = field(default_factory=Counter)  # e.g. "HTTP 404 enka.network" -> 3
+
+    def summary(self, limit: int = 3) -> str:
+        return "; ".join(f"{r} x{n}" for r, n in self.reasons.most_common(limit))
+
+
+def _host(url: str) -> str:
+    return (urlparse(url).hostname or "?")[:60]
+
+
 class ImageFetcher:
-    def __init__(self, concurrency: int = 8) -> None:
+    def __init__(self, concurrency: int = 6) -> None:
         self._cache: OrderedDict[str, bytes] = OrderedDict()
         self._sem = asyncio.Semaphore(concurrency)
         self._session: aiohttp.ClientSession | None = None
@@ -53,53 +68,70 @@ class ImageFetcher:
         while len(self._cache) > CACHE_SIZE:
             self._cache.popitem(last=False)
 
-    async def _fetch_one(self, url: str) -> bytes | None:
-        if url in self._cache:
-            self._cache.move_to_end(url)
-            return self._cache[url]
-        if not is_allowed_url(url):
-            log.info("icon skipped (host not allowed): %s", url[:120])
-            return None
+    async def _attempt(self, url: str) -> tuple[bytes | None, str, bool]:
+        """One download. Returns (data, failure_reason, worth_retrying)."""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(timeout=TIMEOUT)
         try:
             async with self._sem, self._session.get(url, allow_redirects=False) as resp:
                 if resp.status != 200:
-                    log.info("icon download failed (HTTP %s): %s", resp.status, url[:120])
-                    return None
-                declared = resp.content_length
-                if declared is not None and declared > MAX_BYTES:
-                    log.info("icon too large: %s", url[:120])
-                    return None
+                    return None, f"HTTP {resp.status} {_host(url)}", resp.status == 429 or resp.status >= 500
+                if resp.content_length is not None and resp.content_length > MAX_BYTES:
+                    return None, f"too large {_host(url)}", False
                 data = await resp.content.read(MAX_BYTES + 1)
                 if len(data) > MAX_BYTES:
-                    log.info("icon too large: %s", url[:120])
-                    return None
+                    return None, f"too large {_host(url)}", False
+                return data, "", False
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            log.info("icon download failed (%s): %s", type(exc).__name__, url[:120])
-            return None
-        self._remember(url, data)
-        return data
+            return None, f"{type(exc).__name__} {_host(url)}", True
+
+    async def _fetch_one(self, url: str) -> tuple[bytes | None, str]:
+        if url in self._cache:
+            self._cache.move_to_end(url)
+            return self._cache[url], ""
+        if not is_allowed_url(url):
+            log.info("icon skipped (host not allowed): %s", url[:120])
+            return None, f"blocked host {_host(url)}"
+        reason = ""
+        for attempt in range(2):  # one retry for rate limits, server errors and timeouts
+            data, reason, retry = await self._attempt(url)
+            if data is not None:
+                self._remember(url, data)
+                return data, ""
+            if not retry:
+                break
+            await asyncio.sleep(0.8)
+        log.info("icon download failed (%s): %s", reason, url[:120])
+        return None, reason
 
     async def fetch_many(self, urls: Iterable[str]) -> dict[str, bytes]:
         unique = [u for u in dict.fromkeys(urls) if u]
         results = await asyncio.gather(*(self._fetch_one(u) for u in unique))
-        found = {u: d for u, d in zip(unique, results) if d is not None}
-        if len(found) < len(unique):
-            log.info("icon download: %d of %d failed", len(unique) - len(found), len(unique))
-        return found
+        return {u: d for u, (d, _) in zip(unique, results) if d is not None}
 
-    async def fetch_with_fallbacks(self, pairs: Iterable[tuple[str, str]]) -> dict[str, bytes]:
-        """For each (primary, fallback) URL pair, download the primary and, only if that fails, the fallback.
+    async def fetch_first(self, items: Iterable[tuple[str, Sequence[str]]]) -> FetchResult:
+        """For each (key, candidate URLs): try the candidates in order until one downloads.
 
-        Returns {primary_url: image_bytes}, so callers always look icons up by their primary URL.
+        Images are returned under `key`. Failures are counted per reason, only for items where every candidate failed.
         """
-        pairs = list(pairs)
-        got = await self.fetch_many(p for p, _ in pairs)
-        missing = [(p, alt) for p, alt in pairs if p not in got and alt]
-        if missing:
-            alt_got = await self.fetch_many(alt for _, alt in missing)
-            for primary, alt in missing:
-                if alt in alt_got:
-                    got[primary] = alt_got[alt]
-        return got
+
+        async def one(key: str, candidates: Sequence[str]) -> tuple[str, bytes | None, list[str]]:
+            reasons: list[str] = []
+            for url in candidates:
+                data, reason = await self._fetch_one(url)
+                if data is not None:
+                    return key, data, []
+                reasons.append(reason)
+            return key, None, reasons
+
+        done = await asyncio.gather(*(one(k, c) for k, c in items if k))
+        result = FetchResult()
+        for key, data, reasons in done:
+            if data is not None:
+                result.images[key] = data
+            else:
+                result.failed += 1
+                result.reasons.update(reasons or ["no icon URL"])
+        if result.failed:
+            log.info("icon download: %d portraits missing (%s)", result.failed, result.summary())
+        return result
