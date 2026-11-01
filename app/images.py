@@ -45,9 +45,11 @@ class FetchResult:
     images: dict[str, bytes] = field(default_factory=dict)
     failed: int = 0  # items for which no candidate could be downloaded
     reasons: Counter = field(default_factory=Counter)  # e.g. "HTTP 404 enka.network" -> 3
+    names: list[str] = field(default_factory=list)  # file names of the portraits that failed
 
-    def summary(self, limit: int = 3) -> str:
-        return "; ".join(f"{r} x{n}" for r, n in self.reasons.most_common(limit))
+    def summary(self, limit: int = 4) -> str:
+        text = "; ".join(f"{r} x{n}" for r, n in self.reasons.most_common(limit))
+        return text + (f" | files: {', '.join(self.names[:4])}" if self.names else "")
 
 
 def _is_image(data: bytes) -> bool:
@@ -79,7 +81,7 @@ class ImageFetcher:
         while len(self._cache) > CACHE_SIZE:
             self._cache.popitem(last=False)
 
-    async def _attempt(self, url: str) -> tuple[bytes | None, str, bool]:
+    async def _attempt(self, url: str) -> tuple[bytes | None, str, bool]:  # data, reason (or content-type on success), retry
         """One download. Returns (data, failure_reason, worth_retrying)."""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(timeout=TIMEOUT)
@@ -92,7 +94,7 @@ class ImageFetcher:
                 data = await resp.content.read(MAX_BYTES + 1)
                 if len(data) > MAX_BYTES:
                     return None, f"too large {_host(url)}", False
-                return data, "", False
+                return data, resp.headers.get("Content-Type", "?").split(";")[0][:30], False
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             return None, f"{type(exc).__name__} {_host(url)}", True
 
@@ -109,7 +111,7 @@ class ImageFetcher:
             if data is not None:
                 if not _is_image(data):
                     log.info("icon is not a valid image: %s", url[:120])
-                    return None, f"not an image {_host(url)}"
+                    return None, f"not an image {_host(url)} ({reason}, {len(data)}B, starts {data[:4].hex()})"
                 self._remember(url, data)
                 return data, ""
             if not retry:
@@ -145,6 +147,7 @@ class ImageFetcher:
                 result.images[key] = data
             else:
                 result.failed += 1
+                result.names.append(key.rsplit("/", 1)[-1][:60])
                 result.reasons.update(reasons or ["no icon URL"])
         if result.failed:
             log.info("icon download: %d portraits missing (%s)", result.failed, result.summary())
