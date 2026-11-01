@@ -13,6 +13,34 @@ DIFFICULTIES = {1: "Easy", 2: "Normal", 3: "Hard", 4: "Visionary", 5: "Arcana Ch
 CHAR_TYPES = {2: "Trial", 3: "Support"}  # 1 = the player's own character
 
 
+def pick_season(entries: list[Mapping[str, Any]], previous: bool, now: int | None = None) -> Mapping[str, Any]:
+    """Current season = the one whose schedule contains `now`; previous = the latest one that already ended.
+
+    Falls back to list order (newest first) if the schedules are missing or unreadable.
+    """
+    import time
+
+    now = int(time.time()) if now is None else now
+
+    def span(e: Mapping[str, Any]) -> tuple[int, int]:
+        sc = e.get("schedule") or {}
+        try:
+            return int(sc.get("start_time")), int(sc.get("end_time"))
+        except (TypeError, ValueError):
+            return 0, 0
+
+    timed = [e for e in entries if span(e)[0]]
+    if timed:
+        ordered = sorted(timed, key=lambda e: -span(e)[0])
+        if previous:
+            ended = [e for e in ordered if span(e)[1] < now]
+            return ended[0] if ended else {}
+        current = [e for e in ordered if span(e)[0] <= now <= span(e)[1]]
+        return current[0] if current else {}
+    index = 1 if previous else 0
+    return entries[index] if len(entries) > index else {}
+
+
 @dataclass
 class TChar:
     icon: str
@@ -82,7 +110,7 @@ class TheaterData:
         return cls(**d)
 
     @classmethod
-    def from_raw(cls, raw: Mapping[str, Any]) -> "TheaterData":
+    def from_raw(cls, raw: Mapping[str, Any], previous: bool = False, now: int | None = None) -> "TheaterData":
         def num(v: Any, default: int = 0) -> int:
             try:
                 return int(v)
@@ -95,8 +123,7 @@ class TheaterData:
             r = num(item.get("rarity"), 4)
             return TChar(icon=url or (cands[0] if cands else ""), rarity=r - 100 if r > 100 else r, candidates=cands, **extra)
 
-        entries = raw.get("data") or []
-        latest = entries[0] if entries else {}
+        latest = pick_season(raw.get("data") or [], previous, now)
         stat = latest.get("stat") or {}
         sched = latest.get("schedule") or {}
         detail = latest.get("detail") or {}

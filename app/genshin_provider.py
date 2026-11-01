@@ -22,6 +22,8 @@ from app import profile as profile_mod
 from app.profile import ProfileData
 from app import theater as theater_mod
 from app.theater import TheaterData
+from app import stygian as stygian_mod
+from app.stygian import StygianData
 from app.crypto import CredentialCipher, CryptoError
 from app.db import Database
 from app.errors import ChronicleHidden, NotesDisabled, ReauthRequired, UpstreamUnavailable
@@ -35,6 +37,7 @@ NOTES_TTL = timedelta(minutes=3)
 ABYSS_TTL = timedelta(minutes=30)
 PROFILE_TTL = timedelta(minutes=10)
 THEATER_TTL = timedelta(minutes=30)
+STYGIAN_TTL = timedelta(minutes=30)
 REQUEST_TIMEOUT_SECONDS = 25
 
 T = TypeVar("T")
@@ -87,10 +90,19 @@ class GenshinProvider:
             account, "profile", PROFILE_TTL, profile_mod.SCHEMA_VERSION, self._fetch_profile, ProfileData.from_json
         )
 
-    async def get_theater(self, account: Mapping[str, Any]) -> Report[TheaterData]:
-        return await self._cached(
-            account, "theater", THEATER_TTL, theater_mod.SCHEMA_VERSION, self._fetch_theater, TheaterData.from_json
-        )
+    async def get_theater(self, account: Mapping[str, Any], previous: bool = False) -> Report[TheaterData]:
+        async def fetch(acc: Mapping[str, Any]) -> TheaterData:
+            return await self._fetch_theater(acc, previous)
+
+        key = "theater:previous" if previous else "theater:current"
+        return await self._cached(account, key, THEATER_TTL, theater_mod.SCHEMA_VERSION, fetch, TheaterData.from_json)
+
+    async def get_stygian(self, account: Mapping[str, Any], previous: bool = False) -> Report[StygianData]:
+        async def fetch(acc: Mapping[str, Any]) -> StygianData:
+            return await self._fetch_stygian(acc, previous)
+
+        key = "stygian:previous" if previous else "stygian:current"
+        return await self._cached(account, key, STYGIAN_TTL, stygian_mod.SCHEMA_VERSION, fetch, StygianData.from_json)
 
     # ---- caching --------------------------------------------------------
     async def _cached(
@@ -160,13 +172,22 @@ class GenshinProvider:
 
         return ProfileData.from_genshin(await self._call(account, call))
 
-    async def _fetch_theater(self, account: Mapping[str, Any]) -> TheaterData:
+    async def _fetch_theater(self, account: Mapping[str, Any], previous: bool = False) -> TheaterData:
         uid = int(account["game_uid"])
 
         async def call(client: genshin.Client) -> Any:
+            # genshin.py warns that `previous` does nothing here: the payload lists several seasons.
             return await client.get_imaginarium_theater(uid, need_detail=True, raw=True)
 
-        return TheaterData.from_raw(await self._call(account, call))
+        return TheaterData.from_raw(await self._call(account, call), previous=previous)
+
+    async def _fetch_stygian(self, account: Mapping[str, Any], previous: bool = False) -> StygianData:
+        uid = int(account["game_uid"])
+
+        async def call(client: genshin.Client) -> Any:
+            return await client.get_stygian_onslaught(uid, raw=True, need_detail=True)
+
+        return StygianData.from_raw(await self._call(account, call), previous=previous)
 
     async def _call(self, account: Mapping[str, Any], call: Callable[[genshin.Client], Awaitable[Any]]) -> Any:
         """Run one genshin.py request with decrypted cookies, mapping every failure to a safe BotError."""

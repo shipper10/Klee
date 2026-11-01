@@ -145,3 +145,10 @@ it needs `get_genshin_detailed_characters` and is a candidate for the next step,
 (`TheaterData.from_raw`), so portraits use the same candidate/persistent-store pipeline. Shows the season summary,
 notable characters, each act's cast with Trial/Support tags, Wondrous Booms and Mystery Caches (names only; their icons
 are not drawn). Cached 30 min. Not yet verified against a real payload: field names follow genshin.py's model aliases.
+
+## Milestone 5: previous season for Theater, and Stygian Onslaught (1 Nov 2026)
+The Theater payload lists several seasons, and genshin.py's `previous` flag does nothing for it, so the season is picked
+by schedule (current = contains now, previous = latest ended; list order if no schedule). `/theater previous`.
+`/stygian` (options `previous`, `coop`) parses the raw `hard_challenge` list the same way: season summary (best
+difficulty and time), each challenge's team, strongest-strike / highest-damage characters and enemy notes (markup
+stripped). Not yet verified against real payloads (field names follow genshin.py's model aliases).
