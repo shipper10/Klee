@@ -152,3 +152,10 @@ by schedule (current = contains now, previous = latest ended; list order if no s
 `/stygian` (options `previous`, `coop`) parses the raw `hard_challenge` list the same way: season summary (best
 difficulty and time), each challenge's team, strongest-strike / highest-damage characters and enemy notes (markup
 stripped). Not yet verified against real payloads (field names follow genshin.py's model aliases).
+
+## Milestone 6: single-character detail (2 Nov 2026)
+`/character <name>` finds the character in the (cached) profile by name (exact, then prefix, then substring), then asks
+HoYoLAB's `character/detail` for just that id (`return_raw_data=True`, parsed in `app/character.py`, cached 10 min).
+Card: portrait/level/constellation/friendship, weapon with main and sub stat, five artifacts with main stat and four
+substats, set bonuses, attributes, talents (level > 0 only) and constellation circles. Profile cache schema is now 2
+(`ProfChar.id`). Not yet verified on a real payload; the property names come from the response's own `property_map`.

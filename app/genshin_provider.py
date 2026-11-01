@@ -24,6 +24,8 @@ from app import theater as theater_mod
 from app.theater import TheaterData
 from app import stygian as stygian_mod
 from app.stygian import StygianData
+from app import character as character_mod
+from app.character import CharacterDetail
 from app.crypto import CredentialCipher, CryptoError
 from app.db import Database
 from app.errors import ChronicleHidden, NotesDisabled, ReauthRequired, UpstreamUnavailable
@@ -38,6 +40,7 @@ ABYSS_TTL = timedelta(minutes=30)
 PROFILE_TTL = timedelta(minutes=10)
 THEATER_TTL = timedelta(minutes=30)
 STYGIAN_TTL = timedelta(minutes=30)
+CHARACTER_TTL = timedelta(minutes=10)
 REQUEST_TIMEOUT_SECONDS = 25
 
 T = TypeVar("T")
@@ -96,6 +99,14 @@ class GenshinProvider:
 
         key = "theater:previous" if previous else "theater:current"
         return await self._cached(account, key, THEATER_TTL, theater_mod.SCHEMA_VERSION, fetch, TheaterData.from_json)
+
+    async def get_character(self, account: Mapping[str, Any], char_id: int) -> Report[CharacterDetail]:
+        async def fetch(acc: Mapping[str, Any]) -> CharacterDetail:
+            return await self._fetch_character(acc, char_id)
+
+        return await self._cached(
+            account, f"character:{char_id}", CHARACTER_TTL, character_mod.SCHEMA_VERSION, fetch, CharacterDetail.from_json
+        )
 
     async def get_stygian(self, account: Mapping[str, Any], previous: bool = False) -> Report[StygianData]:
         async def fetch(acc: Mapping[str, Any]) -> StygianData:
@@ -180,6 +191,17 @@ class GenshinProvider:
             return await client.get_imaginarium_theater(uid, need_detail=True, raw=True)
 
         return TheaterData.from_raw(await self._call(account, call), previous=previous)
+
+    async def _fetch_character(self, account: Mapping[str, Any], char_id: int) -> CharacterDetail:
+        uid = int(account["game_uid"])
+
+        async def call(client: genshin.Client) -> Any:
+            return await client.get_genshin_detailed_characters(uid, characters=[char_id], return_raw_data=True)
+
+        detail = CharacterDetail.from_raw(await self._call(account, call), char_id)
+        if detail is None:
+            raise UpstreamUnavailable("HoYoLAB returned no details for that character.")
+        return detail
 
     async def _fetch_stygian(self, account: Mapping[str, Any], previous: bool = False) -> StygianData:
         uid = int(account["game_uid"])

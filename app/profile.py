@@ -7,13 +7,14 @@ from typing import Any
 
 from app.abyss import icon_candidates
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass
 class ProfChar:
     name: str
     icon: str  # lookup key for downloaded images
+    id: int = 0
     level: int = 1
     rarity: int = 4
     constellation: int = 0
@@ -68,7 +69,7 @@ class ProfileData:
             cands = icon_candidates(url, int(g(c, "id")))
             chars.append(
                 ProfChar(
-                    name=str(g(c, "name", "")), icon=url or (cands[0] if cands else ""),
+                    name=str(g(c, "name", "")), icon=url or (cands[0] if cands else ""), id=int(g(c, "id")),
                     level=int(g(c, "level", 1)), rarity=int(g(c, "rarity", 4)),
                     constellation=int(g(c, "constellation")), friendship=int(g(c, "friendship")),
                     element=str(g(c, "element", "")), candidates=cands,
@@ -86,3 +87,17 @@ class ProfileData:
             waypoints=int(g(s, "unlocked_waypoints")), domains=int(g(s, "unlocked_domains")),
             characters=chars,
         )
+
+
+def find_characters(data: ProfileData, query: str) -> list[ProfChar]:
+    """Characters matching a typed name: exact match wins, then prefix, then substring (case/space-insensitive)."""
+    norm = lambda t: "".join(ch for ch in t.lower() if ch.isalnum())  # noqa: E731
+    q = norm(query)
+    if not q:
+        return []
+    chars = data.sorted_characters()
+    for test in (lambda n: n == q, lambda n: n.startswith(q), lambda n: q in n):
+        hits = [c for c in chars if test(norm(c.name))]
+        if hits:
+            return hits
+    return []
