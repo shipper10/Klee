@@ -258,3 +258,32 @@ async def test_send_abyss_reports_portrait_failures_in_chat():
     await bot._send_abyss(c, 1, 120, ACCOUNT, previous=False, floor=None)
     assert c.bot.photos and "2 character portrait(s)" in c.bot.messages[-1][1]
     assert "HTTP 404 enka.network" in c.bot.messages[-1][1]
+
+
+async def test_fetch_reads_whole_body_when_it_arrives_in_pieces(monkeypatch):
+    import asyncio
+    import io as _io
+    from PIL import Image as _Image
+
+    big = _Image.effect_noise((400, 400), 90).convert("RGB")
+    buf = _io.BytesIO()
+    big.save(buf, "PNG")
+    body = buf.getvalue()
+    assert len(body) > 40000
+
+    async def slow(request):
+        resp = web.StreamResponse(headers={"Content-Type": "image/png"})
+        await resp.prepare(request)
+        for i in range(0, len(body), 8192):
+            await resp.write(body[i:i + 8192])
+            await asyncio.sleep(0.01)
+        return resp
+
+    app = web.Application()
+    app.router.add_get("/big", slow)
+    async with TestServer(app) as server:
+        monkeypatch.setattr(images, "is_allowed_url", lambda u: True)
+        f = images.ImageFetcher()
+        res = await f.fetch_first([("k", [str(server.make_url("/big"))])])
+        await f.close()
+    assert res.images.get("k") == body and res.failed == 0

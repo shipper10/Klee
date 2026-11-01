@@ -91,9 +91,14 @@ class ImageFetcher:
                     return None, f"HTTP {resp.status} {_host(url)}", resp.status == 429 or resp.status >= 500
                 if resp.content_length is not None and resp.content_length > MAX_BYTES:
                     return None, f"too large {_host(url)}", False
-                data = await resp.content.read(MAX_BYTES + 1)
-                if len(data) > MAX_BYTES:
-                    return None, f"too large {_host(url)}", False
+                # StreamReader.read(n) returns only what has arrived so far, which silently truncated
+                # larger images; read the whole body in chunks instead.
+                buf = bytearray()
+                async for chunk in resp.content.iter_chunked(16384):
+                    buf += chunk
+                    if len(buf) > MAX_BYTES:
+                        return None, f"too large {_host(url)}", False
+                data = bytes(buf)
                 return data, resp.headers.get("Content-Type", "?").split(";")[0][:30], False
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             return None, f"{type(exc).__name__} {_host(url)}", True
