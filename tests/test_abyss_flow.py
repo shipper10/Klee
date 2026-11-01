@@ -287,3 +287,33 @@ async def test_fetch_reads_whole_body_when_it_arrives_in_pieces(monkeypatch):
         res = await f.fetch_first([("k", [str(server.make_url("/big"))])])
         await f.close()
     assert res.images.get("k") == body and res.failed == 0
+
+
+async def test_updateicons_is_admin_only_and_reports():
+    class Msg:
+        def __init__(self):
+            self.sent = []
+
+        async def reply_text(self, t):
+            self.sent.append(t)
+
+    class Rep:
+        def text(self):
+            return "done"
+
+    seen = []
+
+    async def sync(force):
+        seen.append(force)
+        return Rep()
+
+    def upd(uid, msg):
+        return SimpleNamespace(effective_message=msg, effective_user=SimpleNamespace(id=uid),
+                               effective_chat=SimpleNamespace(type="private"))
+
+    deps = bot.Deps(db=None, provider=None, public_base_url="https://x", admin_ids=(7,), icon_sync=sync)  # type: ignore[arg-type]
+    c = SimpleNamespace(application=SimpleNamespace(bot_data={"deps": deps}), args=["force"])
+    stranger, owner = Msg(), Msg()
+    await bot.updateicons(upd(8, stranger), c)
+    await bot.updateicons(upd(7, owner), c)
+    assert stranger.sent == [] and seen == [True] and owner.sent[-1] == "done"

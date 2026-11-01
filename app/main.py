@@ -10,11 +10,14 @@ import signal
 from aiohttp import web
 from telegram.ext import Application
 
+from app.asset_store import AssetStore
 from app.bot import COMMANDS, Deps, register
 from app.config import Settings, load_settings
 from app.crypto import CredentialCipher
 from app.db import Database
 from app.genshin_provider import GenshinProvider
+from app.icon_sync import load_saved_table, sync_icons, sync_loop
+from app.images import ImageFetcher
 from app.web import WebDeps, build_app
 
 log = logging.getLogger("klee")
@@ -46,7 +49,20 @@ async def run(settings: Settings) -> None:
     provider = GenshinProvider(db, cipher)
 
     application = Application.builder().token(settings.telegram_bot_token).concurrent_updates(True).build()
-    deps = Deps(db=db, provider=provider, public_base_url=settings.public_base_url)
+    store = AssetStore(db.storage)
+    await store.ensure_bucket()
+    if await load_saved_table(store):
+        log.info("character table restored from the asset store")
+    fetcher = ImageFetcher(store=store)
+
+    async def icon_sync(force: bool):
+        return await sync_icons(fetcher, store, force=force)
+
+    deps = Deps(
+        db=db, provider=provider, public_base_url=settings.public_base_url,
+        images=fetcher, admin_ids=settings.admin_ids, icon_sync=icon_sync,
+    )
+    sync_task = asyncio.create_task(sync_loop(fetcher, store))
     register(application, deps)
 
     await application.initialize()
@@ -75,6 +91,7 @@ async def run(settings: Settings) -> None:
     await stop.wait()
 
     log.info("Shutting down")
+    sync_task.cancel()
     await application.updater.stop()
     await application.stop()
     await application.shutdown()

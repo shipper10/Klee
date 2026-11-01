@@ -40,6 +40,7 @@ class Settings:
     port: int
     log_level: str
     app_env: str
+    admin_ids: tuple[int, ...] = ()
 
 
 def load_settings() -> Settings:
@@ -53,6 +54,14 @@ def load_settings() -> Settings:
     except ValueError as exc:
         raise ConfigError("PORT must be an integer") from exc
 
+    admin_ids: list[int] = []
+    for part in os.environ.get("ADMIN_TELEGRAM_IDS", "").split(","):
+        if part.strip():
+            try:
+                admin_ids.append(int(part))
+            except ValueError as exc:
+                raise ConfigError("ADMIN_TELEGRAM_IDS must be comma-separated numbers") from exc
+
     return Settings(
         telegram_bot_token=_require("TELEGRAM_BOT_TOKEN"),
         supabase_url=_require("SUPABASE_URL"),
@@ -63,4 +72,5 @@ def load_settings() -> Settings:
         port=port,
         log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper() or "INFO",
         app_env=app_env,
+        admin_ids=tuple(admin_ids),
     )

@@ -81,6 +81,8 @@ class Deps:
     public_base_url: str
     images: ImageFetcher = field(default_factory=ImageFetcher)
     cooldowns: dict[int, float] = field(default_factory=dict)
+    admin_ids: tuple[int, ...] = ()
+    icon_sync: Any = None  # async (force: bool) -> object with .text(); None when no persistent store
 
 
 def _deps(context: ContextTypes.DEFAULT_TYPE) -> Deps:
@@ -111,6 +113,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(HELP_TEXT)
+
+
+async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_text(f"Your Telegram id: {update.effective_user.id}")
+
+
+async def updateicons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner-only: refresh the stored character table and portraits. `/updateicons force` re-downloads everything."""
+    deps = _deps(context)
+    if not _private(update) or update.effective_user.id not in deps.admin_ids:
+        return  # silent for everyone else
+    if deps.icon_sync is None:
+        await update.effective_message.reply_text("The icon library is not enabled.")
+        return
+    force = bool(context.args) and context.args[0].lower() == "force"
+    await update.effective_message.reply_text("Updating the icon library…" + (" (full refresh)" if force else ""))
+    try:
+        report = await deps.icon_sync(force)
+        await update.effective_message.reply_text(report.text())
+    except Exception as exc:
+        await update.effective_message.reply_text(f"Update failed: {type(exc).__name__}")
 
 
 async def privacy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -396,6 +419,8 @@ def register(application: Application, deps: Deps) -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("privacy", privacy))
+    application.add_handler(CommandHandler("myid", myid))
+    application.add_handler(CommandHandler("updateicons", updateicons))
     application.add_handler(CommandHandler("link", link))
     application.add_handler(CommandHandler("accounts", accounts))
     application.add_handler(CommandHandler("setaccount", setaccount))

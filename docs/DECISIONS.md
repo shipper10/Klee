@@ -121,3 +121,15 @@ Preferring HoYoLAB's raw icon URL (2.1) made things worse: more portraits went b
 first version, worked for most) -> enka.network by the name in HoYoLAB's URL -> gi.yatta.moe -> HoYoLAB's URL.
 Downloads retry once on 429/5xx/timeouts. If any portrait still fails, the bot sends a "Note:" line in the chat with the
 HTTP codes/hosts, so diagnosis does not depend on Render logs. Cache schema bumped to 3.
+
+## Milestone 2.3: the real portrait bug, and a persistent icon library (1 Nov 2026)
+**Root cause of the blank portraits:** `StreamReader.read(n)` returns only the bytes that have arrived so far, so larger
+PNGs were silently cut off (the HoYoLAB one in the diagnostic was exactly 32768 bytes). Truncated images could not be
+drawn, hence a placeholder. Fixed by reading the whole body in chunks (regression test with a slow chunked server).
+
+**Persistent library:** Render's disk is wiped on restart, so icons and genshin.py's character table are stored in a
+private Supabase Storage bucket `game-assets` (created automatically on startup).
+Lookup order: memory -> Supabase Storage -> network (and a successful download is saved). A recently failed URL is not
+retried for 10 minutes. Automatic update: 45 s after startup and every 24 h the character table is refreshed and every
+known portrait that is not stored yet is downloaded. Manual: `/updateicons` (owner only, `ADMIN_TELEGRAM_IDS`);
+`/updateicons force` re-downloads everything. `/myid` shows your Telegram id.

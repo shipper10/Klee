@@ -26,6 +26,10 @@ class Database:
     async def connect(cls, url: str, service_role_key: str) -> "Database":
         return cls(await acreate_client(url, service_role_key))
 
+    @property
+    def storage(self) -> Any:
+        return self._c.storage
+
     async def ping(self) -> None:
         await self._c.table("game_accounts").select("id").limit(1).execute()
 

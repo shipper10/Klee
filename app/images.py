@@ -10,13 +10,17 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import time
 from collections import Counter, OrderedDict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import urlparse
 
 import aiohttp
 from PIL import Image
+
+from app.asset_store import key_for_url
 
 log = logging.getLogger(__name__)
 
@@ -65,13 +69,25 @@ def _host(url: str) -> str:
     return (urlparse(url).hostname or "?")[:60]
 
 
+FAIL_MEMORY_SECONDS = 600  # do not hammer a host for an icon that just failed
+
+
 class ImageFetcher:
-    def __init__(self, concurrency: int = 6) -> None:
+    def __init__(self, concurrency: int = 6, store: Any = None) -> None:
         self._cache: OrderedDict[str, bytes] = OrderedDict()
+        self._store = store  # AssetStore or None: persistent copy across restarts
+        self._failed_at: dict[str, float] = {}
+        self._bg: set[asyncio.Task] = set()
         self._sem = asyncio.Semaphore(concurrency)
         self._session: aiohttp.ClientSession | None = None
 
+    async def close_background(self) -> None:
+        """Wait until pending store writes finish."""
+        if self._bg:
+            await asyncio.gather(*list(self._bg), return_exceptions=True)
+
     async def close(self) -> None:
+        await self.close_background()
         if self._session and not self._session.closed:
             await self._session.close()
 
@@ -103,13 +119,26 @@ class ImageFetcher:
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             return None, f"{type(exc).__name__} {_host(url)}", True
 
-    async def _fetch_one(self, url: str) -> tuple[bytes | None, str]:
-        if url in self._cache:
+    async def _save(self, url: str, data: bytes) -> None:
+        if self._store is not None:
+            await self._store.put(key_for_url(url), data)
+
+    async def _fetch_one(self, url: str, refresh: bool = False) -> tuple[bytes | None, str]:
+        """memory -> persistent store -> network. `refresh` skips the first two and rewrites the store."""
+        if not refresh and url in self._cache:
             self._cache.move_to_end(url)
             return self._cache[url], ""
         if not is_allowed_url(url):
             log.info("icon skipped (host not allowed): %s", url[:120])
             return None, f"blocked host {_host(url)}"
+        if not refresh:
+            if time.monotonic() - self._failed_at.get(url, -1e9) < FAIL_MEMORY_SECONDS:
+                return None, f"recently failed {_host(url)}"
+            if self._store is not None:
+                stored = await self._store.get(key_for_url(url))
+                if stored and _is_image(stored):
+                    self._remember(url, stored)
+                    return stored, ""
         reason = ""
         for attempt in range(2):  # one retry for rate limits, server errors and timeouts
             data, reason, retry = await self._attempt(url)
@@ -118,12 +147,22 @@ class ImageFetcher:
                     log.info("icon is not a valid image: %s", url[:120])
                     return None, f"not an image {_host(url)} ({reason}, {len(data)}B, starts {data[:4].hex()})"
                 self._remember(url, data)
+                self._failed_at.pop(url, None)
+                task = asyncio.create_task(self._save(url, data))  # persist without delaying the report
+                self._bg.add(task)
+                task.add_done_callback(self._bg.discard)
                 return data, ""
             if not retry:
                 break
             await asyncio.sleep(0.8)
         log.info("icon download failed (%s): %s", reason, url[:120])
+        self._failed_at[url] = time.monotonic()
         return None, reason
+
+    async def refresh(self, url: str) -> tuple[bool, str]:
+        """Re-download one icon from the network and overwrite the stored copy. Returns (ok, reason)."""
+        data, reason = await self._fetch_one(url, refresh=True)
+        return data is not None, reason
 
     async def fetch_many(self, urls: Iterable[str]) -> dict[str, bytes]:
         unique = [u for u in dict.fromkeys(urls) if u]
