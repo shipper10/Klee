@@ -289,7 +289,7 @@ async def _send_abyss(
             if floor is not None and result.data.has_data:
                 raise NoRecords(f"No records for Spiral Abyss floor {floor} in this period.")
             raise NoRecords("No Spiral Abyss records for this period yet.")
-        icons = await deps.images.fetch_many(result.data.icon_urls())
+        icons = await deps.images.fetch_with_fallbacks(result.data.icon_pairs())
         png = await asyncio.to_thread(
             render_abyss_card,
             result.data,

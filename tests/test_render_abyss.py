@@ -102,36 +102,54 @@ def test_json_roundtrip():
     assert AbyssData.from_json(d.to_json()) == d
 
 
-def test_from_genshin_conversion(monkeypatch):
-    """Uses genshin.py's own pydantic models with a payload shaped like the real API."""
-    from genshin.models import SpiralAbyss
-    from genshin.models.genshin import constants as gc
+def _raw_payload():
+    """Shaped like the real `spiralAbyss` response (field names = genshin.py's model aliases)."""
+    hoyo = "https://act-webstatic.hoyoverse.com/game_record/genshin/character_icon/UI_AvatarIcon_{}.png"
 
-    # In production genshin.py downloads the character table on the first request; here an empty one is enough.
-    monkeypatch.setitem(gc.CHARACTER_NAMES, "en-us", {})
+    def av(name, lvl=90, rarity=5):
+        return {"id": 10000001, "level": lvl, "rarity": rarity, "element": "Pyro", "icon": hoyo.format(name)}
 
-    def av(i, lvl=90):
-        return {"id": 10000000 + i, "level": lvl, "rarity": 5, "element": "Pyro", "icon": f"https://x.hoyoverse.com/{i}.png", "name": f"C{i}"}
-
-    raw = {
+    return {
         "schedule_id": 150, "start_time": "1792166400", "end_time": "1794844800", "total_battle_times": 6,
         "total_win_times": 6, "max_floor": "12-3", "total_star": 36, "is_unlock": True,
-        "reveal_rank": [{"avatar_id": 10000001, "avatar_icon": "https://x.hoyoverse.com/1.png", "value": 6, "rarity": 5, "element": "Pyro", "name": "C1"}],
-        "defeat_rank": [{"avatar_id": 10000002, "avatar_icon": "https://x.hoyoverse.com/2.png", "value": 19, "rarity": 5, "element": "Pyro", "name": "C2"}],
+        "reveal_rank": [{"avatar_id": 1, "avatar_icon": hoyo.format("Furina"), "value": 6, "rarity": 5}],
+        "defeat_rank": [{"avatar_id": 2, "avatar_icon": hoyo.format("Nilou"), "value": 19, "rarity": 5}],
         "damage_rank": [], "take_damage_rank": [], "energy_skill_rank": [], "normal_skill_rank": [],
         "floors": [{"index": 12, "star": 9, "max_star": 9, "is_unlock": True, "levels": [
             {"index": 1, "star": 3, "max_star": 3, "battles": [
-                {"index": 1, "timestamp": "1792242349", "avatars": [av(1), av(2, 80)]},
-                {"index": 2, "timestamp": "1792242500", "avatars": [av(3)]}]}]}],
-        "daily_reward": 0, "damage_rank_list": [],
+                {"index": 1, "timestamp": "1792242349", "avatars": [av("Columbina"), av("Nefer", 80), av("Yelan", 90, 105)]},
+                {"index": 2, "timestamp": "1792242500", "avatars": [av("Shenhe", 70, 4)]}]}]}],
     }
-    model = SpiralAbyss(**raw)
-    data = AbyssData.from_genshin(model)
+
+
+def test_from_raw_keeps_original_icon_urls_and_adds_fallback():
+    data = AbyssData.from_raw(_raw_payload())
     assert data.total_stars == 36 and data.max_floor == "12-3" and data.total_battles == 6
     ch = data.floors[0].chambers[0]
-    assert [c.level for c in ch.first_half] == [90, 80] and len(ch.second_half) == 1
-    assert ch.timestamp == 1792242500
+    assert [c.level for c in ch.first_half] == [90, 80, 90] and len(ch.second_half) == 1
+    assert ch.timestamp == 1792242500 and ch.stars == 3
+    first = ch.first_half[0]
+    assert first.icon == "https://act-webstatic.hoyoverse.com/game_record/genshin/character_icon/UI_AvatarIcon_Columbina.png"
+    assert first.alt == "https://enka.network/ui/UI_AvatarIcon_Columbina.png"
+    assert ch.first_half[2].rarity == 5  # collaboration characters are stored as 105
     assert data.stats[0].key == "most_kills" and data.stats[0].value == 19
+    assert data.most_played[0].value == 6 and "Furina" in data.most_played[0].icon
+    assert data.icon_pairs()[0][1].startswith("https://enka.network/ui/")
+
+
+def test_from_raw_is_lenient_about_missing_fields():
+    data = AbyssData.from_raw({})
+    assert data.total_stars == 0 and data.floors == [] and not data.has_data
+    odd = AbyssData.from_raw({"floors": [{"index": 3, "levels": [{"index": 1, "battles": [{"index": 1, "avatars": [{}]}]}]}]})
+    assert odd.floors[0].chambers[0].first_half[0].icon == ""
+    assert AbyssData.from_json(odd.to_json()) == odd
+
+
+def test_fallback_icon_handles_odd_urls():
+    from app.abyss import fallback_icon
+
+    assert fallback_icon("") == "" and fallback_icon("https://x.com/a.png") == ""
+    assert fallback_icon("https://x.com/UI_AvatarIcon_Side_Ayaka.png").endswith("UI_AvatarIcon_Ayaka.png")
 
 
 def test_icon_url_allowlist():

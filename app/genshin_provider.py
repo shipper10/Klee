@@ -132,9 +132,9 @@ class GenshinProvider:
         uid = int(account["game_uid"])
 
         async def call(client: genshin.Client) -> Any:
-            return await client.get_genshin_spiral_abyss(uid, previous=previous)
+            return await client.get_genshin_spiral_abyss(uid, previous=previous, raw=True)
 
-        return AbyssData.from_genshin(await self._call(account, call))
+        return AbyssData.from_raw(await self._call(account, call))
 
     async def _call(self, account: Mapping[str, Any], call: Callable[[genshin.Client], Awaitable[Any]]) -> Any:
         """Run one genshin.py request with decrypted cookies, mapping every failure to a safe BotError."""

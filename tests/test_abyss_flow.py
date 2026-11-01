@@ -105,8 +105,8 @@ class FakeProvider:
 
 
 class FakeImages:
-    async def fetch_many(self, urls):
-        return {u: _icon(u) for u in urls}
+    async def fetch_with_fallbacks(self, pairs):
+        return {p: _icon(p) for p, _ in pairs}
 
 
 def ctx(provider):
@@ -193,3 +193,26 @@ async def test_image_fetcher_blocks_disallowed_hosts():
     f = images.ImageFetcher()
     assert await f.fetch_many(["http://127.0.0.1/x.png", "https://evil.example.com/x.png", ""]) == {}
     await f.close()
+
+
+async def test_fetch_with_fallbacks_uses_alt_only_when_primary_fails(monkeypatch):
+    async def ok(request):
+        return web.Response(body=_icon("a"), content_type="image/png")
+
+    async def missing(request):
+        return web.Response(status=404)
+
+    app = web.Application()
+    app.router.add_get("/ok", ok)
+    app.router.add_get("/missing", missing)
+    async with TestServer(app) as server:
+        monkeypatch.setattr(images, "is_allowed_url", lambda u: True)
+        base = str(server.make_url("/"))
+        f = images.ImageFetcher()
+        got = await f.fetch_with_fallbacks([
+            (base + "ok", base + "missing"),       # primary works, fallback must not be needed
+            (base + "missing", base + "ok"),       # primary 404 -> falls back
+            (base + "missing", ""),                # nothing works -> absent (placeholder)
+        ])
+        await f.close()
+    assert set(got) == {base + "ok", base + "missing"} and got[base + "missing"] == got[base + "ok"]

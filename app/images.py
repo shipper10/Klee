@@ -58,20 +58,25 @@ class ImageFetcher:
             self._cache.move_to_end(url)
             return self._cache[url]
         if not is_allowed_url(url):
+            log.info("icon skipped (host not allowed): %s", url[:120])
             return None
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(timeout=TIMEOUT)
         try:
             async with self._sem, self._session.get(url, allow_redirects=False) as resp:
                 if resp.status != 200:
+                    log.info("icon download failed (HTTP %s): %s", resp.status, url[:120])
                     return None
                 declared = resp.content_length
                 if declared is not None and declared > MAX_BYTES:
+                    log.info("icon too large: %s", url[:120])
                     return None
                 data = await resp.content.read(MAX_BYTES + 1)
                 if len(data) > MAX_BYTES:
+                    log.info("icon too large: %s", url[:120])
                     return None
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            log.info("icon download failed (%s): %s", type(exc).__name__, url[:120])
             return None
         self._remember(url, data)
         return data
@@ -83,3 +88,18 @@ class ImageFetcher:
         if len(found) < len(unique):
             log.info("icon download: %d of %d failed", len(unique) - len(found), len(unique))
         return found
+
+    async def fetch_with_fallbacks(self, pairs: Iterable[tuple[str, str]]) -> dict[str, bytes]:
+        """For each (primary, fallback) URL pair, download the primary and, only if that fails, the fallback.
+
+        Returns {primary_url: image_bytes}, so callers always look icons up by their primary URL.
+        """
+        pairs = list(pairs)
+        got = await self.fetch_many(p for p, _ in pairs)
+        missing = [(p, alt) for p, alt in pairs if p not in got and alt]
+        if missing:
+            alt_got = await self.fetch_many(alt for _, alt in missing)
+            for primary, alt in missing:
+                if alt in alt_got:
+                    got[primary] = alt_got[alt]
+        return got

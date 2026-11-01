@@ -92,3 +92,25 @@ None of them reproduces the official share-card look, so the layouts are origina
 The Abyss image has only been rendered with generated stand-in portraits. Real portraits, real API payloads and the
 Telegram upload have not been exercised. The official share card also uses large background art and splash art that
 the HoYoLAB API does not provide; they are intentionally not reproduced yet (art licensing is the owner's call).
+
+---
+
+# Milestone 2.1: missing portraits, and hoyo-buddy as a second style (1 Nov 2026)
+
+## Missing portraits (reported by the owner after the first real run)
+Three characters showed placeholders in every chamber, so the cause is specific icon URLs, not random failures.
+Most likely cause (not confirmed, the sandbox cannot reach enka.network): genshin.py replaces each character icon with
+`https://enka.network/ui/UI_AvatarIcon_<name>.png`, and that file is missing for some characters.
+Fix: the Abyss payload is now parsed directly (`AbyssData.from_raw`), so the icon URL is the one HoYoLAB itself returns
+(what the official site displays); the enka.network copy is only a fallback (`ImageFetcher.fetch_with_fallbacks`).
+Every failed download is now logged with its URL and reason (HTTP status or error class), so if a portrait is still
+missing the Render log says exactly why. Cache schema bumped to 2 so old cached Abyss data is refreshed.
+
+## hoyo-buddy renderers as a selectable style: not possible as-is
+- Its README states that `hoyo-buddy-assets` is **private**; the Genshin drawers load backgrounds, block images and
+  fonts from `hoyo-buddy-assets/assets/...`. Without that repository they cannot produce an image, and no public
+  access exists.
+- Each drawer also imports ~14 internal modules (~4,000 lines: config, cache, emojis, l10n, constants...) and
+  third-party packages that a Telegram bot does not otherwise need (discord.py, redis, sentry, enka, ambr, yatta, hakushin...).
+- AGPL-3.0 would apply to Klee if any of its code were copied.
+It remains a good layout and data-handling reference, but a drop-in second style is not available.

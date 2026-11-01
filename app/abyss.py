@@ -2,19 +2,31 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+_ICON_NAME = re.compile(r"UI_AvatarIcon(?:_Side)?_(.+?)\.png")
+
+
+def fallback_icon(url: str) -> str:
+    """enka.network copy of a HoYoLAB character icon (same UI_AvatarIcon_<name>.png naming), or "" if unknown."""
+    m = _ICON_NAME.search(url or "")
+    return f"https://enka.network/ui/UI_AvatarIcon_{m.group(1)}.png" if m else ""
 
 
 @dataclass
 class Char:
-    icon: str
+    icon: str  # URL exactly as HoYoLAB returns it (what the official site shows)
     level: int = 0
     rarity: int = 4
     value: int = 0  # play count / stat value, depending on where it is used
+    alt: str = ""  # fallback icon URL, used only if `icon` cannot be downloaded
 
 
 @dataclass
@@ -85,68 +97,101 @@ class AbyssData:
             ],
         )
 
-    def icon_urls(self) -> list[str]:
-        urls = [c.icon for c in self.most_played]
+    def _all_chars(self) -> list[Char]:
+        chars = list(self.most_played)
         for f in self.floors:
             for ch in f.chambers:
-                urls += [c.icon for c in ch.first_half + ch.second_half]
-        return [u for u in dict.fromkeys(urls) if u]
+                chars += ch.first_half + ch.second_half
+        return chars
+
+    def icon_urls(self) -> list[str]:
+        return [u for u in dict.fromkeys(c.icon for c in self._all_chars()) if u]
+
+    def icon_pairs(self) -> list[tuple[str, str]]:
+        """(primary, fallback) for every distinct icon."""
+        pairs = {c.icon: c.alt for c in self._all_chars() if c.icon}
+        return list(pairs.items())
 
     @property
     def has_data(self) -> bool:
         return self.total_battles > 0 or any(f.chambers for f in self.floors)
 
     @classmethod
-    def from_genshin(cls, abyss: Any) -> "AbyssData":
-        """Convert `genshin.models.SpiralAbyss` (fields verified against genshin.py 1.7.31)."""
+    def from_raw(cls, raw: Mapping[str, Any]) -> "AbyssData":
+        """Parse the raw HoYoLAB `spiralAbyss` payload (field names taken from genshin.py 1.7.31's model aliases).
 
-        def ts(dt: datetime | None) -> int | None:
-            return int(dt.timestamp()) if dt else None
+        Parsed directly, not through genshin.py's model, because that model replaces every character icon with an
+        enka.network URL, which is missing for some (usually new) characters.
+        """
 
-        ranks = abyss.ranks
+        def to_int(v: Any, default: int = 0) -> int:
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+
+        def rarity_of(v: Any) -> int:
+            r = to_int(v, 4)
+            return r - 100 if r > 100 else r  # collaboration characters are stored as 105
+
+        def icon_of(item: Mapping[str, Any], key: str) -> str:
+            return str(item.get(key) or item.get("icon") or item.get("image") or "")
+
+        def char(item: Mapping[str, Any], key: str = "icon", **extra: Any) -> Char:
+            url = icon_of(item, key)
+            return Char(icon=url, rarity=rarity_of(item.get("rarity")), alt=fallback_icon(url), **extra)
+
         stats: list[Stat] = []
-        for key, lst in (
-            ("most_kills", ranks.most_kills),
-            ("strongest_strike", ranks.strongest_strike),
-            ("most_damage_taken", ranks.most_damage_taken),
-            ("most_bursts_used", ranks.most_bursts_used),
-            ("most_skills_used", ranks.most_skills_used),
+        for key, rank_key in (
+            ("most_kills", "defeat_rank"),
+            ("strongest_strike", "damage_rank"),
+            ("most_damage_taken", "take_damage_rank"),
+            ("most_bursts_used", "energy_skill_rank"),
+            ("most_skills_used", "normal_skill_rank"),
         ):
-            if lst:
-                stats.append(Stat(key=key, value=int(lst[0].value), icon=lst[0].icon))
+            top = (raw.get(rank_key) or [None])[0]
+            if top:
+                stats.append(Stat(key=key, value=to_int(top.get("value")), icon=icon_of(top, "avatar_icon")))
 
         floors: list[Floor] = []
-        for f in abyss.floors:
+        for f in raw.get("floors") or []:
             chambers: list[Chamber] = []
-            for c in f.chambers:
+            for c in f.get("levels") or []:
                 halves: dict[int, list[Char]] = {1: [], 2: []}
                 last_ts: int | None = None
-                for b in c.battles:
-                    halves.setdefault(int(b.half), []).extend(
-                        Char(icon=ch.icon, level=int(ch.level), rarity=int(ch.rarity)) for ch in b.characters
+                for b in c.get("battles") or []:
+                    halves.setdefault(to_int(b.get("index"), 1), []).extend(
+                        char(a, "icon", level=to_int(a.get("level"))) for a in b.get("avatars") or []
                     )
-                    t = ts(b.timestamp)
-                    if t is not None and (last_ts is None or t > last_ts):
+                    t = to_int(b.get("timestamp"), 0)
+                    if t and (last_ts is None or t > last_ts):
                         last_ts = t
                 chambers.append(
                     Chamber(
-                        number=int(c.chamber),
-                        stars=int(c.stars),
+                        number=to_int(c.get("index")),
+                        stars=to_int(c.get("star")),
                         timestamp=last_ts,
                         first_half=halves.get(1, []),
                         second_half=halves.get(2, []),
                     )
                 )
-            floors.append(Floor(number=int(f.floor), stars=int(f.stars), max_stars=int(f.max_stars), chambers=chambers))
+            floors.append(
+                Floor(
+                    number=to_int(f.get("index")),
+                    stars=to_int(f.get("star")),
+                    max_stars=to_int(f.get("max_star"), 9),
+                    chambers=chambers,
+                )
+            )
 
         return cls(
-            period_start=ts(abyss.start_time) or 0,
-            period_end=ts(abyss.end_time) or 0,
-            total_stars=int(abyss.total_stars),
-            max_floor=str(abyss.max_floor),
-            total_battles=int(abyss.total_battles),
+            period_start=to_int(raw.get("start_time")),
+            period_end=to_int(raw.get("end_time")),
+            total_stars=to_int(raw.get("total_star")),
+            max_floor=str(raw.get("max_floor") or "-"),
+            total_battles=to_int(raw.get("total_battle_times")),
             most_played=[
-                Char(icon=c.icon, rarity=int(c.rarity), value=int(c.value)) for c in ranks.most_played[:4]
+                char(c, "avatar_icon", value=to_int(c.get("value"))) for c in (raw.get("reveal_rank") or [])[:4]
             ],
             stats=stats,
             floors=sorted(floors, key=lambda x: x.number),
