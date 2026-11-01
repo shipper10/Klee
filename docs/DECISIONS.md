@@ -133,3 +133,9 @@ Lookup order: memory -> Supabase Storage -> network (and a successful download i
 retried for 10 minutes. Automatic update: 45 s after startup and every 24 h the character table is refreshed and every
 known portrait that is not stored yet is downloaded. Manual: `/updateicons` (owner only, `ADMIN_TELEGRAM_IDS`);
 `/updateicons force` re-downloads everything. `/myid` shows your Telegram id.
+
+## Milestone 3: profile overview and character grid (1 Nov 2026)
+`/profile` (overview cells + top 16 characters) and `/characters` (all, 8 per row, level strip and constellation badge)
+use `genshin.get_genshin_user` (stats + character list in two requests), cached 10 min. Portraits use the same
+candidate/persistent-store pipeline as the Abyss. Per-character detail (weapon, artifacts, talents) is not drawn yet;
+it needs `get_genshin_detailed_characters` and is a candidate for the next step, with Theater and Stygian.

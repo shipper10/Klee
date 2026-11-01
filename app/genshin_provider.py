@@ -18,6 +18,8 @@ import genshin
 from app import abyss as abyss_mod
 from app import notes as notes_mod
 from app.abyss import AbyssData
+from app import profile as profile_mod
+from app.profile import ProfileData
 from app.crypto import CredentialCipher, CryptoError
 from app.db import Database
 from app.errors import ChronicleHidden, NotesDisabled, ReauthRequired, UpstreamUnavailable
@@ -29,6 +31,7 @@ log = logging.getLogger(__name__)
 NOTES_CACHE_KEY = "notes"
 NOTES_TTL = timedelta(minutes=3)
 ABYSS_TTL = timedelta(minutes=30)
+PROFILE_TTL = timedelta(minutes=10)
 REQUEST_TIMEOUT_SECONDS = 25
 
 T = TypeVar("T")
@@ -75,6 +78,11 @@ class GenshinProvider:
 
         key = "abyss:previous" if previous else "abyss:current"
         return await self._cached(account, key, ABYSS_TTL, abyss_mod.SCHEMA_VERSION, fetch, AbyssData.from_json)
+
+    async def get_profile(self, account: Mapping[str, Any]) -> Report[ProfileData]:
+        return await self._cached(
+            account, "profile", PROFILE_TTL, profile_mod.SCHEMA_VERSION, self._fetch_profile, ProfileData.from_json
+        )
 
     # ---- caching --------------------------------------------------------
     async def _cached(
@@ -135,6 +143,14 @@ class GenshinProvider:
             return await client.get_genshin_spiral_abyss(uid, previous=previous, raw=True)
 
         return AbyssData.from_raw(await self._call(account, call))
+
+    async def _fetch_profile(self, account: Mapping[str, Any]) -> ProfileData:
+        uid = int(account["game_uid"])
+
+        async def call(client: genshin.Client) -> Any:
+            return await client.get_genshin_user(uid)
+
+        return ProfileData.from_genshin(await self._call(account, call))
 
     async def _call(self, account: Mapping[str, Any], call: Callable[[genshin.Client], Awaitable[Any]]) -> Any:
         """Run one genshin.py request with decrypted cookies, mapping every failure to a safe BotError."""

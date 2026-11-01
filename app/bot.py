@@ -28,6 +28,7 @@ from app.linking import TOKEN_TTL, hash_token, new_token, utcnow
 from app.regions import mask_uid, server_label, server_utc_offset
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
+from app.render_profile import render_profile_card, select_characters
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,8 @@ COMMANDS = [
     BotCommand("setaccount", "Choose your default account"),
     BotCommand("notes", "Daily Notes image (resin, commissions…)"),
     BotCommand("abyss", "Spiral Abyss report image"),
+    BotCommand("profile", "Profile overview + top characters"),
+    BotCommand("characters", "All your characters"),
     BotCommand("unlink", "Remove a linked account"),
     BotCommand("privacy", "What is stored and why"),
     BotCommand("help", "Help"),
@@ -53,6 +56,8 @@ HELP_TEXT = (
     "/setaccount – choose the default account\n"
     "/notes – Daily Notes image (add “pick” to choose an account)\n"
     "/abyss – Spiral Abyss image (options: previous, or a floor number like 12)\n"
+    "/profile – account overview with your top characters\n"
+    "/characters – all your characters\n"
     "/unlink – remove an account and its stored session\n"
     "/privacy – what I store\n\n"
     "Coming later: Theater, Stygian, profile, Diary, Wishes, group sharing.\n"
@@ -346,6 +351,74 @@ async def _send_abyss(
         )
 
 
+async def _send_profile(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], show_all: bool
+) -> None:
+    deps = _deps(context)
+    try:
+        _check_cooldown(deps, user_id)
+        await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
+        result = await deps.provider.get_profile(account)
+        chars = select_characters(result.data, show_all)
+        fetched = await deps.images.fetch_first(
+            [(c.icon, c.candidates) for c in chars if c.icon]
+        )
+        png = await asyncio.to_thread(
+            render_profile_card,
+            result.data,
+            nickname=account.get("nickname") or result.data.nickname or "Traveler",
+            uid=str(account["game_uid"]),
+            server=account["region"],
+            icons=fetched.images,
+            characters=chars,
+            fetched_at=result.fetched_at,
+            source=result.source,
+            summary=not show_all,
+        )
+    except BotError as exc:
+        await context.bot.send_message(chat_id, exc.user_message)
+        return
+    except Exception as exc:
+        log.error("profile failed: %s", type(exc).__name__)
+        await context.bot.send_message(chat_id, "Something went wrong. Please try again later.")
+        return
+
+    title = "All characters" if show_all else "Profile"
+    await context.bot.send_photo(chat_id, photo=io.BytesIO(png), caption=f"{title} · {SOURCE_CAPTIONS[result.source]}")
+    if fetched.failed:
+        await context.bot.send_message(
+            chat_id,
+            f"Note: {fetched.failed} character portrait(s) could not be loaded and show as blank tiles "
+            f"({fetched.summary()}). Please send this line to the developer.",
+        )
+
+
+async def _profile_entry(update: Update, context: ContextTypes.DEFAULT_TYPE, show_all: bool, command: str) -> None:
+    message = update.effective_message
+    if not _private(update):
+        await message.reply_text(
+            "Reports in groups need the account owner's sharing permission, which is not available yet. "
+            f"Please use /{command} in a private chat with me."
+        )
+        return
+    deps = _deps(context)
+    user_id = update.effective_user.id
+    rows = await deps.db.list_accounts(user_id)
+    if not rows:
+        await message.reply_text("You have no linked accounts yet. Use /link.")
+        return
+    account = next((r for r in rows if r["is_default"]), rows[0])
+    await _send_profile(context, update.effective_chat.id, user_id, account, show_all)
+
+
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _profile_entry(update, context, False, "profile")
+
+
+async def characters(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _profile_entry(update, context, True, "characters")
+
+
 def _parse_abyss_args(args: list[str]) -> tuple[bool, int | None]:
     previous, floor = False, None
     for a in args:
@@ -427,6 +500,8 @@ def register(application: Application, deps: Deps) -> None:
     application.add_handler(CommandHandler("unlink", unlink))
     application.add_handler(CommandHandler("notes", notes))
     application.add_handler(CommandHandler("abyss", abyss))
+    application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(CommandHandler("characters", characters))
     application.add_handler(CallbackQueryHandler(on_setdef, pattern=rf"^setdef:{UUID_PATTERN}$"))
     application.add_handler(CallbackQueryHandler(on_unlink_ask, pattern=rf"^unlink:{UUID_PATTERN}$"))
     application.add_handler(CallbackQueryHandler(on_unlink_confirm, pattern=rf"^unlinkok:{UUID_PATTERN}$"))
