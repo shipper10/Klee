@@ -33,3 +33,14 @@ class UpstreamUnavailable(BotError):
 
 class RateLimited(BotError):
     user_message = "Please wait a few seconds before asking again."
+
+
+class ChronicleHidden(BotError):
+    user_message = (
+        "This account's Battle Chronicle is set to private. In HoYoLAB open Battle Chronicle → "
+        "privacy settings and make your game data public, then try again."
+    )
+
+
+class NoRecords(BotError):
+    user_message = "There are no records for this period yet."

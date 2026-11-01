@@ -24,3 +24,11 @@ def mask_uid(uid: str) -> str:
     if len(uid) < 6:
         return "*" * len(uid)
     return f"{uid[:2]}{'*' * (len(uid) - 5)}{uid[-3:]}"
+
+
+# Verified against genshin.py: constants.SERVER_TIMEZONES.
+SERVER_UTC_OFFSETS = {"os_asia": 8, "os_cht": 8, "os_usa": -5, "os_euro": 1}
+
+
+def server_utc_offset(server: str) -> int:
+    return SERVER_UTC_OFFSETS.get(server, 8)

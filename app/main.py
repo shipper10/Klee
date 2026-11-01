@@ -46,7 +46,8 @@ async def run(settings: Settings) -> None:
     provider = GenshinProvider(db, cipher)
 
     application = Application.builder().token(settings.telegram_bot_token).concurrent_updates(True).build()
-    register(application, Deps(db=db, provider=provider, public_base_url=settings.public_base_url))
+    deps = Deps(db=db, provider=provider, public_base_url=settings.public_base_url)
+    register(application, deps)
 
     await application.initialize()
     web_app = build_app(WebDeps(db=db, cipher=cipher, bot=application.bot))
@@ -78,6 +79,7 @@ async def run(settings: Settings) -> None:
     await application.stop()
     await application.shutdown()
     await runner.cleanup()
+    await deps.images.close()
 
 
 def main() -> None:

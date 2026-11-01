@@ -21,10 +21,12 @@ from telegram.constants import ChatAction, ChatType
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from app.db import Database
-from app.errors import BotError, RateLimited
+from app.errors import BotError, NoRecords, RateLimited
 from app.genshin_provider import GenshinProvider
+from app.images import ImageFetcher
 from app.linking import TOKEN_TTL, hash_token, new_token, utcnow
-from app.regions import mask_uid, server_label
+from app.regions import mask_uid, server_label, server_utc_offset
+from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
 
 log = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ COMMANDS = [
     BotCommand("accounts", "List your linked accounts"),
     BotCommand("setaccount", "Choose your default account"),
     BotCommand("notes", "Daily Notes image (resin, commissions…)"),
+    BotCommand("abyss", "Spiral Abyss report image"),
     BotCommand("unlink", "Remove a linked account"),
     BotCommand("privacy", "What is stored and why"),
     BotCommand("help", "Help"),
@@ -49,9 +52,10 @@ HELP_TEXT = (
     "/accounts – your linked accounts\n"
     "/setaccount – choose the default account\n"
     "/notes – Daily Notes image (add “pick” to choose an account)\n"
+    "/abyss – Spiral Abyss image (options: previous, or a floor number like 12)\n"
     "/unlink – remove an account and its stored session\n"
     "/privacy – what I store\n\n"
-    "Coming later: Spiral Abyss, Theater, Stygian, Diary, Wishes, group sharing.\n"
+    "Coming later: Theater, Stygian, profile, Diary, Wishes, group sharing.\n"
     "Unofficial community tool, not affiliated with HoYoverse."
 )
 
@@ -75,6 +79,7 @@ class Deps:
     db: Database
     provider: GenshinProvider
     public_base_url: str
+    images: ImageFetcher = field(default_factory=ImageFetcher)
     cooldowns: dict[int, float] = field(default_factory=dict)
 
 
@@ -259,12 +264,85 @@ async def _send_notes(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
         await context.bot.send_message(chat_id, "Something went wrong. Please try again later.")
         return
 
-    caption = {
-        "live": "Live data",
-        "cached": "Cached data (updated within the last few minutes)",
-        "stale": "Stale data: HoYoLAB did not answer, showing the last saved copy",
-    }[result.source]
-    await context.bot.send_photo(chat_id, photo=io.BytesIO(png), caption=f"Daily Notes · {caption}")
+    await context.bot.send_photo(
+        chat_id, photo=io.BytesIO(png), caption=f"Daily Notes · {SOURCE_CAPTIONS[result.source]}"
+    )
+
+
+SOURCE_CAPTIONS = {
+    "live": "Live data",
+    "cached": "Cached data (updated within the last few minutes)",
+    "stale": "Stale data: HoYoLAB did not answer, showing the last saved copy",
+}
+
+
+async def _send_abyss(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], previous: bool, floor: int | None
+) -> None:
+    deps = _deps(context)
+    try:
+        _check_cooldown(deps, user_id)
+        await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
+        result = await deps.provider.get_abyss(account, previous=previous)
+        floors = select_floors(result.data, floor)
+        if not result.data.has_data or not floors:
+            if floor is not None and result.data.has_data:
+                raise NoRecords(f"No records for Spiral Abyss floor {floor} in this period.")
+            raise NoRecords("No Spiral Abyss records for this period yet.")
+        icons = await deps.images.fetch_many(result.data.icon_urls())
+        png = await asyncio.to_thread(
+            render_abyss_card,
+            result.data,
+            nickname=account.get("nickname") or "Traveler",
+            icons=icons,
+            floors=floors,
+            tz_hours=server_utc_offset(account["region"]),
+            fetched_at=result.fetched_at,
+            source=result.source,
+            full_summary=floor is None,
+        )
+    except BotError as exc:
+        await context.bot.send_message(chat_id, exc.user_message)
+        return
+    except Exception as exc:
+        log.error("abyss failed: %s", type(exc).__name__)
+        await context.bot.send_message(chat_id, "Something went wrong. Please try again later.")
+        return
+
+    period = "Previous" if previous else "Current"
+    await context.bot.send_photo(
+        chat_id, photo=io.BytesIO(png), caption=f"Spiral Abyss ({period} period) · {SOURCE_CAPTIONS[result.source]}"
+    )
+
+
+def _parse_abyss_args(args: list[str]) -> tuple[bool, int | None]:
+    previous, floor = False, None
+    for a in args:
+        a = a.lower()
+        if a in ("previous", "prev", "last"):
+            previous = True
+        elif a.isdigit() and 1 <= int(a) <= 12:
+            floor = int(a)
+    return previous, floor
+
+
+async def abyss(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if not _private(update):
+        await message.reply_text(
+            "Reports in groups need the account owner's sharing permission, which is not available yet. "
+            "Please use /abyss in a private chat with me."
+        )
+        return
+    deps = _deps(context)
+    user_id = update.effective_user.id
+    rows = await deps.db.list_accounts(user_id)
+    if not rows:
+        await message.reply_text("You have no linked accounts yet. Use /link.")
+        return
+    previous, floor = _parse_abyss_args(context.args or [])
+    account = next((r for r in rows if r["is_default"]), rows[0])
+    await _send_abyss(context, update.effective_chat.id, user_id, account, previous, floor)
 
 
 async def notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -315,6 +393,7 @@ def register(application: Application, deps: Deps) -> None:
     application.add_handler(CommandHandler("setaccount", setaccount))
     application.add_handler(CommandHandler("unlink", unlink))
     application.add_handler(CommandHandler("notes", notes))
+    application.add_handler(CommandHandler("abyss", abyss))
     application.add_handler(CallbackQueryHandler(on_setdef, pattern=rf"^setdef:{UUID_PATTERN}$"))
     application.add_handler(CallbackQueryHandler(on_unlink_ask, pattern=rf"^unlink:{UUID_PATTERN}$"))
     application.add_handler(CallbackQueryHandler(on_unlink_confirm, pattern=rf"^unlinkok:{UUID_PATTERN}$"))
