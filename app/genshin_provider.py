@@ -22,12 +22,15 @@ from app import profile as profile_mod
 from app.profile import ProfileData
 from app import theater as theater_mod
 from app.theater import TheaterData
+from app import diary as diary_mod
+from app.diary import DiaryData
 from app import stygian as stygian_mod
 from app.stygian import StygianData
 from app import character as character_mod
 from app.character import CharacterDetail
 from app.crypto import CredentialCipher, CryptoError
 from app.db import Database
+from app.regions import server_utc_offset
 from app.errors import ChronicleHidden, NotesDisabled, ReauthRequired, UpstreamUnavailable
 from app.linking import parse_ts, utcnow
 from app.notes import NotesData
@@ -41,6 +44,7 @@ PROFILE_TTL = timedelta(minutes=10)
 THEATER_TTL = timedelta(minutes=30)
 STYGIAN_TTL = timedelta(minutes=30)
 CHARACTER_TTL = timedelta(minutes=10)
+DIARY_TTL = timedelta(minutes=20)
 REQUEST_TIMEOUT_SECONDS = 25
 
 T = TypeVar("T")
@@ -114,6 +118,13 @@ class GenshinProvider:
 
         key = "stygian:previous" if previous else "stygian:current"
         return await self._cached(account, key, STYGIAN_TTL, stygian_mod.SCHEMA_VERSION, fetch, StygianData.from_json)
+
+    async def get_diary(self, account: Mapping[str, Any], previous: bool = False) -> Report[DiaryData]:
+        async def fetch(acc: Mapping[str, Any]) -> DiaryData:
+            return await self._fetch_diary(acc, previous)
+
+        key = "diary:previous" if previous else "diary:current"
+        return await self._cached(account, key, DIARY_TTL, diary_mod.SCHEMA_VERSION, fetch, DiaryData.from_json)
 
     # ---- caching --------------------------------------------------------
     async def _cached(
@@ -210,6 +221,17 @@ class GenshinProvider:
             return await client.get_stygian_onslaught(uid, raw=True, need_detail=True)
 
         return StygianData.from_raw(await self._call(account, call), previous=previous)
+
+    async def _fetch_diary(self, account: Mapping[str, Any], previous: bool = False) -> DiaryData:
+        uid = int(account["game_uid"])
+        year, month = diary_mod.month_for(server_utc_offset(account["region"]), previous)
+
+        async def call(client: genshin.Client) -> Any:
+            return await client.request_ledger(uid, game=genshin.Game.GENSHIN, month=month)
+
+        data = DiaryData.from_raw(await self._call(account, call))
+        data.year = year
+        return data
 
     async def _call(self, account: Mapping[str, Any], call: Callable[[genshin.Client], Awaitable[Any]]) -> Any:
         """Run one genshin.py request with decrypted cookies, mapping every failure to a safe BotError."""

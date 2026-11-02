@@ -30,6 +30,7 @@ from app.regions import mask_uid, server_label, server_utc_offset
 from app.styles import resolve as resolve_style
 from app.ui_kit import THEMES
 from app import settings_menu
+from app.render_diary import render_diary_card
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
 from app.render_character import render_character_card
@@ -51,6 +52,7 @@ COMMANDS = [
     BotCommand("abyss", "Spiral Abyss report image"),
     BotCommand("theater", "Imaginarium Theater report image"),
     BotCommand("stygian", "Stygian Onslaught report image"),
+    BotCommand("diary", "Traveler's Diary: primogems and mora income"),
     BotCommand("profile", "Profile overview + top characters"),
     BotCommand("characters", "All your characters"),
     BotCommand("character", "Details of one character: /character Furina"),
@@ -71,6 +73,7 @@ HELP_TEXT = (
     "/abyss – Spiral Abyss image (options: previous, or a floor number like 12)\n"
     "/theater – Imaginarium Theater image (options: previous, all)\n"
     "/stygian – Stygian Onslaught image (options: previous, coop)\n"
+    "/diary – primogems and mora income this month (option: previous)\n"
     "/profile – account overview with your top characters\n"
     "/characters – all your characters\n"
     "/character <name> – weapon, artifacts, talents and stats of one character\n"
@@ -81,7 +84,7 @@ HELP_TEXT = (
     "/privacy – what I store\n\n"
     "In groups: use the same commands for yourself, or reply to someone's message with a command "
     "if they turned on /share. Linking stays in private chat.\n"
-    "Coming later: Diary, Wishes, easier phone linking.\n"
+    "Coming later: Wishes, easier phone linking.\n"
     "Unofficial community tool, not affiliated with HoYoverse."
 )
 
@@ -672,6 +675,46 @@ async def theater(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _send_theater(context, update.effective_chat.id, user_id, account, show_all, previous)
 
 
+async def _send_diary(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], previous: bool) -> None:
+    deps = _deps(context)
+    try:
+        _check_cooldown(deps, user_id)
+        await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
+        result = await deps.provider.get_diary(account, previous=previous)
+        if not result.data.found:
+            raise NoRecords("No Traveler's Diary data for that month yet." + ("" if previous else " Try /diary previous."))
+        style = await resolve_style(deps.db, user_id, "diary")
+        png = await asyncio.to_thread(
+            render_diary_card,
+            result.data,
+            nickname=account.get("nickname") or "Traveler",
+            fetched_at=result.fetched_at,
+            source=result.source,
+            style=style,
+        )
+    except BotError as exc:
+        await context.bot.send_message(chat_id, exc.user_message)
+        return
+    except Exception as exc:
+        log.error("diary failed: %s", type(exc).__name__)
+        await context.bot.send_message(chat_id, "Something went wrong. Please try again later.")
+        return
+
+    await context.bot.send_photo(
+        chat_id, photo=io.BytesIO(png),
+        caption=f"Traveler's Diary ({'previous' if previous else 'this'} month) · {SOURCE_CAPTIONS[result.source]}",
+    )
+
+
+async def diary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    resolved = await _resolve(update, context)
+    if resolved is None:
+        return
+    account, user_id = resolved
+    previous = any(a.lower() in ("previous", "prev", "last") for a in context.args or [])
+    await _send_diary(context, update.effective_chat.id, user_id, account, previous)
+
+
 async def _send_stygian(
     context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], multi: bool, previous: bool
 ) -> None:
@@ -878,6 +921,7 @@ def register(application: Application, deps: Deps) -> None:
     application.add_handler(CommandHandler("character", character))
     application.add_handler(CommandHandler("theater", theater))
     application.add_handler(CommandHandler("stygian", stygian))
+    application.add_handler(CommandHandler("diary", diary))
     application.add_handler(CommandHandler("profile", profile))
     application.add_handler(CommandHandler("characters", characters))
     application.add_handler(CallbackQueryHandler(on_setdef, pattern=rf"^setdef:{UUID_PATTERN}$"))

@@ -20,6 +20,7 @@ SERVICES: dict[str, str] = {
     "abyss": "Spiral Abyss",
     "theater": "Imaginarium Theater",
     "stygian": "Stygian Onslaught",
+    "diary": "Traveler's Diary",
     "profile": "Profile and characters",
     "character": "Character card",
 }
