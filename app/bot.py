@@ -29,7 +29,7 @@ from app.linking import TOKEN_TTL, hash_token, new_token, utcnow
 from app.regions import mask_uid, server_label, server_utc_offset
 from app.styles import resolve as resolve_style
 from app.ui_kit import THEMES
-from app import settings_menu
+from app import reminders, settings_menu
 from app.render_diary import render_diary_card
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
@@ -284,7 +284,7 @@ async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _private_only(update):
         return
     deps, user_id = _deps(context), update.effective_user.id
-    text, markup = settings_menu.home(user_id in deps.admin_ids, await _sharing_state(deps, user_id))
+    text, markup = settings_menu.home(user_id in deps.admin_ids, await _sharing_state(deps, user_id), await _reminder_state(deps, user_id))
     await update.effective_message.reply_text(text, reply_markup=markup)
 
 
@@ -294,6 +294,14 @@ async def _sharing_state(deps: Deps, user_id: int) -> bool | None:
     if not rows:
         return None
     return any(r.get("shared_in_groups") for r in rows)
+
+
+async def _reminder_state(deps: Deps, user_id: int) -> str | None:
+    """Option name when the user has a linked account (reminders need one), else None (button hidden)."""
+    if not await deps.db.list_accounts(user_id):
+        return None
+    row = await deps.db.get_reminder(user_id)
+    return reminders.to_option(int(row["resin_threshold"])) if row else "off"
 
 
 async def on_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -314,6 +322,16 @@ async def on_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await query.answer()
             png = await asyncio.to_thread(settings_menu.render_style_preview)
             await context.bot.send_photo(query.message.chat.id, photo=io.BytesIO(png), caption="The available image styles")
+            return
+        if action == "rem" and len(parts) <= 2:
+            await query.answer()
+            if len(parts) == 2:
+                if parts[1] not in reminders.OPTIONS or await _reminder_state(deps, user_id) is None:
+                    await query.answer("Link an account first with /link.", show_alert=True)
+                    return
+                await deps.db.set_reminder(user_id, reminders.to_threshold(parts[1]))
+            text, markup = settings_menu.reminder_page(await _reminder_state(deps, user_id) or "off")
+            await query.edit_message_text(text, reply_markup=markup)
             return
         if action == "share" and len(parts) == 2 and parts[1] in ("0", "1"):
             if await _sharing_state(deps, user_id) is None:
@@ -342,7 +360,7 @@ async def on_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         rows = await deps.db.get_style_prefs(user_id)
         vparts = view.split(":")
         if vparts[0] == "home":
-            text, markup = settings_menu.home(is_owner, await _sharing_state(deps, user_id))
+            text, markup = settings_menu.home(is_owner, await _sharing_state(deps, user_id), await _reminder_state(deps, user_id))
         elif vparts[0] in ("me", "own") and len(vparts) == 1:
             text, markup = settings_menu.service_list("g" if vparts[0] == "own" else "u", rows, user_id)
         elif vparts[0] in ("me", "own") and len(vparts) == 2 and settings_menu.valid_svc(vparts[1]):

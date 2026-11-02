@@ -192,3 +192,7 @@ Not yet tested against the real HoYoverse service: the sandbox cannot reach it. 
 - Styles are colour themes (`ui_kit.THEMES`: classic, aurora, sakura, paper) applied through `C` and the `@themed` decorator, so every renderer supports every theme. No third-party artwork is bundled. `styles.SERVICE_STYLES` is per service so a service can get its own layout later.
 - Precedence: user's pick for the service, user's "all", owner default for the service, owner default for all, classic. Stored in `style_prefs` (user_id 0 = owner default). Needs `supabase/migrations/003_style_prefs.sql`; without it everything stays classic.
 - `/settings` (private chat): inline buttons for style per service, group sharing toggle, preview image; owner section (ADMIN_TELEGRAM_IDS) sets the default for everyone. Owner scope is re-checked on every button press.
+
+## Milestone 10: Traveler's Diary and resin reminders
+- `/diary` uses genshin.py's raw ledger endpoint for the server-time month (current or previous), cached 20 minutes.
+- Resin reminders: `/settings` → Resin reminder (off, 80, 120, 160, when full). A background loop (first run 90 s after start, then every 10 min, one user per second) reads the default account's Daily Notes through the normal cached provider path and sends one private message per rise (`armed` flag in table `reminders`, migration `004_reminders.sql`). Stale data never triggers a message; an expired session sends one notice; users who blocked the bot are switched off.

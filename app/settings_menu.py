@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app import reminders
 from app.styles import ALL, SERVICES, SERVICE_STYLES, current_choice, pick
 from app.ui_kit import THEMES, C, _current, draw_stars, font, new_canvas, panel, to_png
 from telegram import InlineKeyboardButton as Btn, InlineKeyboardMarkup as Markup
@@ -24,8 +25,19 @@ def valid_svc(svc: str) -> bool:
     return svc == "all" or svc in SERVICES
 
 
-def home(is_owner: bool, sharing: bool | None) -> Menu:
+def reminder_page(current: str) -> Menu:
+    buttons = [[Btn(("✓ " if current == o else "") + reminders.label(o), callback_data=f"st:rem:{o}")] for o in reminders.OPTIONS]
+    buttons.append([Btn("‹ Back", callback_data="st:home")])
+    text = ("Resin reminder\nI will message you here when your resin reaches the level you pick. "
+            "I check about every 10 minutes and tell you once until you spend some resin.\n\n"
+            f"Now: {reminders.label(current)}")
+    return text, Markup(buttons)
+
+
+def home(is_owner: bool, sharing: bool | None, reminder: str | None = None) -> Menu:
     rows = [[Btn("🎨 Image style", callback_data="st:me")]]
+    if reminder is not None:
+        rows.append([Btn(f"⏰ Resin reminder: {reminders.label(reminder)}", callback_data="st:rem")])
     if sharing is not None:
         rows.append([Btn(f"👥 Group sharing: {'ON' if sharing else 'OFF'} (tap to switch)", callback_data=f"st:share:{0 if sharing else 1}")])
     rows.append([Btn("🖼 Preview the styles", callback_data="st:prev")])

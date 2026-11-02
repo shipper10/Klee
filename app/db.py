@@ -133,6 +133,29 @@ class Database:
             {"user_id": user_id, "service": service, "style": style, "updated_at": _iso(utcnow())}
         ).execute()
 
+    async def get_reminder(self, user_id: int) -> dict[str, Any] | None:
+        try:
+            res = await self._c.table("reminders").select("*").eq("user_id", user_id).limit(1).execute()
+        except Exception:
+            return None
+        return res.data[0] if res.data else None
+
+    async def list_reminders(self) -> list[dict[str, Any]]:
+        res = await self._c.table("reminders").select("*").execute()
+        return list(res.data)
+
+    async def set_reminder(self, user_id: int, threshold: int | None) -> None:
+        """threshold None = off (row removed); 0 = when full. Setting a level re-arms it."""
+        if threshold is None:
+            await self._c.table("reminders").delete().eq("user_id", user_id).execute()
+            return
+        await self._c.table("reminders").upsert(
+            {"user_id": user_id, "resin_threshold": threshold, "armed": True, "session_warned": False, "updated_at": _iso(utcnow())}
+        ).execute()
+
+    async def update_reminder_state(self, user_id: int, **fields: Any) -> None:
+        await self._c.table("reminders").update(fields).eq("user_id", user_id).execute()
+
     async def get_account_for_user(self, account_id: str, telegram_user_id: int) -> dict[str, Any] | None:
         res = (
             await self._c.table("game_accounts")

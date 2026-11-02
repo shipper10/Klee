@@ -18,6 +18,7 @@ from app.db import Database
 from app.genshin_provider import GenshinProvider
 from app.icon_sync import load_saved_table, sync_icons, sync_loop
 from app.images import ImageFetcher
+from app.reminders import reminder_loop
 from app.web import WebDeps, build_app
 
 log = logging.getLogger("klee")
@@ -74,6 +75,7 @@ async def run(settings: Settings) -> None:
     log.info("HTTP server listening on port %s", settings.port)
 
     await application.start()
+    reminder_task = asyncio.create_task(reminder_loop(db, provider, application.bot))
     await application.updater.start_polling(allowed_updates=["message", "callback_query"])
     try:
         await application.bot.set_my_commands(COMMANDS)
@@ -92,6 +94,7 @@ async def run(settings: Settings) -> None:
 
     log.info("Shutting down")
     sync_task.cancel()
+    reminder_task.cancel()
     await application.updater.stop()
     await application.stop()
     await application.shutdown()
