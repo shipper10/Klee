@@ -80,7 +80,7 @@ def _page(title: str, body: str, status: int = 200) -> web.Response:
     return web.Response(text=doc, status=status, content_type="text/html", headers=SECURITY_HEADERS)
 
 
-def _form(error: str | None = None, *, cookie_error: bool = False) -> str:
+def _form(error: str | None = None, *, cookie_error: bool = False, token: str = "") -> str:
     err = f"<p class='err'>{html.escape(error)}</p>" if error else ""
     login_err, cookie_err = ("", err) if cookie_error else (err, "")
     return f"""
@@ -91,7 +91,7 @@ def _form(error: str | None = None, *, cookie_error: bool = False) -> str:
 button). The password is sent to HoYoverse only to get a session; it is never stored or logged.
 You may have to solve a quick captcha. <span dir="rtl">(الإيميل وكلمة سر حساب HoYoverse، وليس حساب جوجل)</span></p>
 {login_err}
-<form method="post" action="login" autocomplete="off">
+<form method="post" action="/link/{html.escape(token)}/login" autocomplete="off">
 <label>E-mail<br><input type="email" name="email" autocomplete="username" required maxlength="254"></label>
 <label>Password<br><input type="password" name="password" autocomplete="current-password" required maxlength="256"></label>
 <label><input type="checkbox" name="understood" value="yes" required> I understand the risks below.</label>
@@ -118,7 +118,7 @@ as <code>name=value</code>, one per line.</li>
 </ol>
 </div>
 {cookie_err}
-<form method="post" autocomplete="off">
+<form method="post" action="/link/{html.escape(token)}" autocomplete="off">
 <textarea name="cookies" placeholder="ltuid_v2=...&#10;ltoken_v2=...&#10;ltmid_v2=..." required></textarea>
 <label><input type="checkbox" name="understood" value="yes" required>
 I understand the risks above.</label>
@@ -160,7 +160,7 @@ async def link_get(request: web.Request) -> web.Response:
     state = evaluate_session(row)
     if state is not SessionState.OK:
         return _dead_link(state)
-    return _page("Link your account", _form())
+    return _page("Link your account", _form(token=token))
 
 
 async def _open_session(request: web.Request) -> tuple[WebDeps, str, dict | None, SessionState]:
@@ -221,19 +221,19 @@ async def link_post(request: web.Request) -> web.Response:
     await deps.db.bump_link_attempts(row["id"], int(row.get("attempts") or 0))
 
     if not understood:
-        return _page("Link your account", _form("Please tick the box to confirm you understand the risks.", cookie_error=True), 400)
+        return _page("Link your account", _form("Please tick the box to confirm you understand the risks.", cookie_error=True, token=token), 400)
     try:
         cookies = parse_cookie_input(cookie_text)
     except CookieInputError as exc:
-        return _page("Link your account", _form(str(exc), cookie_error=True), 400)
+        return _page("Link your account", _form(str(exc), cookie_error=True, token=token), 400)
 
     try:
         linked = await _complete_link(deps, row, cookies)
     except LinkError as exc:
-        return _page("Link your account", _form(str(exc), cookie_error=True), 400)
+        return _page("Link your account", _form(str(exc), cookie_error=True, token=token), 400)
     except Exception as exc:
         log.error("linking failed: %s", type(exc).__name__)
-        return _page("Link your account", _form("Something went wrong on our side. Please try again later.", cookie_error=True), 500)
+        return _page("Link your account", _form("Something went wrong on our side. Please try again later.", cookie_error=True, token=token), 500)
     return _success_page(linked)
 
 
@@ -249,7 +249,7 @@ async def link_login(request: web.Request) -> web.Response:
     await deps.db.bump_link_attempts(row["id"], int(row.get("attempts") or 0))
 
     def again(message: str, status: int = 400) -> web.Response:
-        return _page("Link your account", _form(message), status)
+        return _page("Link your account", _form(message, token=token), status)
 
     if not understood:
         return again("Please tick the box to confirm you understand the risks.")

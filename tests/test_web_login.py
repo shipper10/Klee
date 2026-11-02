@@ -265,3 +265,15 @@ async def test_start_login_rejects_malformed_captcha_and_missing_cookies(monkeyp
         await web_login.start_login("a@b.c", SECRET, captcha={"geetest_challenge": "only"})
     with pytest.raises(LoginError):
         await web_login.start_login("a@b.c", SECRET)
+
+
+async def test_form_posts_use_absolute_paths_that_contain_the_token(linked):
+    client, db, bot, deps, token = await make(Login())
+    try:
+        text = await (await client.get(f"/link/{token}")).text()
+        assert f'action="/link/{token}/login"' in text and f'action="/link/{token}"' in text
+        # the failed-login page must keep working too
+        r = await client.post(f"/link/{token}/login", data={**FORM, "understood": "no"})
+        assert f'action="/link/{token}/login"' in await r.text()
+    finally:
+        await client.close()
