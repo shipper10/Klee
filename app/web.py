@@ -194,6 +194,11 @@ async def _complete_link(deps: WebDeps, row: dict, cookies: dict[str, str]) -> l
     return linked
 
 
+def _oops(exc: Exception) -> str:
+    """Generic failure text. The exception class name (never its message) helps diagnose without server logs."""
+    return f"Something went wrong on our side (code: {type(exc).__name__}). Please try again later."
+
+
 def _success_page(linked: list) -> web.Response:
     return _page("Account linked", _success_body(linked))
 
@@ -233,7 +238,7 @@ async def link_post(request: web.Request) -> web.Response:
         return _page("Link your account", _form(str(exc), cookie_error=True, token=token), 400)
     except Exception as exc:
         log.error("linking failed: %s", type(exc).__name__)
-        return _page("Link your account", _form("Something went wrong on our side. Please try again later.", cookie_error=True, token=token), 500)
+        return _page("Link your account", _form(_oops(exc), cookie_error=True, token=token), 500)
     return _success_page(linked)
 
 
@@ -274,7 +279,7 @@ async def link_login(request: web.Request) -> web.Response:
         return again(str(exc))
     except Exception as exc:
         log.error("sign-in failed: %s", type(exc).__name__)
-        return again("Something went wrong on our side. Please try again later.", 500)
+        return again(_oops(exc), 500)
     finally:
         email = password = ""
     return _success_page(linked)
@@ -358,7 +363,7 @@ async def captcha_post(request: web.Request) -> web.Response:
         return reply(False, message=str(exc))
     except Exception as exc:
         log.error("sign-in failed: %s", type(exc).__name__)
-        return reply(False, message="Something went wrong on our side. Please try again later.")
+        return reply(False, message=_oops(exc))
     finally:
         pending.wipe()
     return reply(True, html=_success_body(linked))

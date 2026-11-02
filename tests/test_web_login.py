@@ -277,3 +277,24 @@ async def test_form_posts_use_absolute_paths_that_contain_the_token(linked):
         assert f'action="/link/{token}/login"' in await r.text()
     finally:
         await client.close()
+
+
+def test_genshin_sign_in_dependency_is_installed():
+    import rsa  # genshin.py imports it lazily; without it every sign-in crashed with ModuleNotFoundError
+
+    assert rsa
+    assert web_login.genshin.utility.auth.encrypt_credentials("a@b.c", 1)
+
+
+async def test_unexpected_error_shows_class_name_only(monkeypatch):
+    class Boom(Login):
+        async def __call__(self, *a, **k):
+            raise ValueError("password hunter2 leaked in message")
+
+    client, db, bot, deps, token = await make(Boom())
+    try:
+        r = await client.post(f"/link/{token}/login", data=FORM)
+        text = await r.text()
+        assert r.status == 500 and "code: ValueError" in text and "hunter2" not in text
+    finally:
+        await client.close()
