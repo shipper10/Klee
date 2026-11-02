@@ -79,6 +79,24 @@ class CharacterDetail:
         items += [(a.icon, _https(a.icon)) for a in self.artifacts if a.icon]
         return list(dict(items).items())
 
+    @property
+    def splash_key(self) -> str:
+        return f"splash:{self.id}"
+
+    def splash_candidates(self) -> list[tuple[str, list[str]]]:
+        """Full-body splash art (Enka, then yatta), derived from the portrait name. Empty if the name is unknown."""
+        import re
+
+        for url in self.candidates:
+            m = re.search(r"UI_AvatarIcon_([A-Za-z0-9_]+)\.png", url)
+            if m and not m.group(1).startswith("Side"):
+                name = m.group(1)
+                return [(self.splash_key, [
+                    f"https://enka.network/ui/UI_Gacha_AvatarImg_{name}.png",
+                    f"https://gi.yatta.moe/assets/UI/UI_Gacha_AvatarImg_{name}.png",
+                ])]
+        return []
+
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
 

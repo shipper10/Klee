@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from app import reminders
-from app.styles import ALL, SERVICES, SERVICE_STYLES, current_choice, pick
+from app.styles import ALL, description, known, label as style_label, SERVICES, SERVICE_STYLES, current_choice, pick
 from app.ui_kit import THEMES, C, _current, draw_stars, font, new_canvas, panel, to_png
 from telegram import InlineKeyboardButton as Btn, InlineKeyboardMarkup as Markup
 
@@ -56,7 +56,7 @@ def service_list(scope: str, rows_db: list[dict[str, Any]], user_id: int) -> Men
     entries = [("all", "All services")] + [(k, v) for k, v in SERVICES.items()]
     for key, label in entries:
         chosen = current_choice(rows_db, uid, svc_key(key))
-        tag = f" · {THEMES[chosen].label}" if chosen else ""
+        tag = f" · {style_label(chosen)}" if chosen else ""
         buttons.append([Btn(f"{label}{tag}", callback_data=f"st:{'own' if owner else 'me'}:{key}")])
     buttons.append([Btn("‹ Back", callback_data=back)])
     if owner:
@@ -83,11 +83,11 @@ def style_page(scope: str, svc: str, rows_db: list[dict[str, Any]], user_id: int
     lines = [f"{label}" + (" · owner default" if owner else ""), ""]
     for sid in styles:
         mark = "✓ " if chosen == sid else "   "
-        lines.append(f"{mark}{THEMES[sid].label}: {THEMES[sid].description}")
+        lines.append(f"{mark}{style_label(sid)}: {description(sid)}")
     lines.append("")
-    lines.append(f"Now: {THEMES[shown].label}" + ("" if chosen else " (default, nothing chosen here)"))
+    lines.append(f"Now: {style_label(shown)}" + ("" if chosen else " (default, nothing chosen here)"))
     s = "g" if owner else "u"
-    buttons = [[Btn(("✓ " if chosen == sid else "") + THEMES[sid].label, callback_data=f"st:set:{s}:{svc}:{sid}")] for sid in styles]
+    buttons = [[Btn(("✓ " if chosen == sid else "") + style_label(sid), callback_data=f"st:set:{s}:{svc}:{sid}")] for sid in styles]
     buttons.append([Btn("↺ Use the default", callback_data=f"st:set:{s}:{svc}:default")])
     buttons.append([Btn("‹ Back", callback_data="st:own" if owner else "st:me")])
     return "\n".join(lines), Markup(buttons)

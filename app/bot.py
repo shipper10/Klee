@@ -28,9 +28,10 @@ from app.images import ImageFetcher
 from app.linking import TOKEN_TTL, hash_token, new_token, utcnow
 from app.regions import mask_uid, server_label, server_utc_offset
 from app.styles import resolve as resolve_style
-from app.ui_kit import THEMES
+from app.styles import SERVICE_STYLES, known as styles_known
 from app import reminders, settings_menu, timing
 from app.theater import describe_raw as describe_theater_raw
+from app.render_showcase import render_character_showcase
 from app.render_diary import render_diary_card
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
@@ -384,7 +385,7 @@ async def on_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await query.answer()
                 return
             scope, svc, style = parts[1], settings_menu.svc_key(parts[2]), parts[3]
-            if style != "default" and style not in THEMES:
+            if style != "default" and not (styles_known(style) and style in SERVICE_STYLES.get(svc if svc != "*" else "notes", [])):
                 await query.answer()
                 return
             await deps.db.set_style_pref(0 if scope == "g" else user_id, svc, None if style == "default" else style)
@@ -849,10 +850,11 @@ async def _send_character(
         _check_cooldown(deps, user_id)
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         result = await deps.provider.get_character(account, matches[0].id)
-        fetched = await _icons(deps, result.data.icon_candidates())
         style = await resolve_style(deps.db, user_id, "character")
+        wanted = result.data.icon_candidates() + (result.data.splash_candidates() if style == "showcase" else [])
+        fetched = await _icons(deps, wanted)
         png = await _timed_render(
-            render_character_card,
+            render_character_showcase if style == "showcase" else render_character_card,
             result.data,
             nickname=account.get("nickname") or "Traveler",
             uid=str(account["game_uid"]),

@@ -24,7 +24,24 @@ SERVICES: dict[str, str] = {
     "profile": "Profile and characters",
     "character": "Character card",
 }
-SERVICE_STYLES: dict[str, list[str]] = {svc: list(THEMES) for svc in SERVICES}
+# Layout styles: a style with its own drawing code (not just colours), available only for the listed services.
+LAYOUTS: dict[str, tuple[str, str]] = {
+    "showcase": ("Showcase", "Large splash art, glass panels and element colours, in the spirit of Enka cards."),
+}
+LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["showcase"]}
+SERVICE_STYLES: dict[str, list[str]] = {svc: list(THEMES) + LAYOUT_SERVICES.get(svc, []) for svc in SERVICES}
+
+
+def known(style: str) -> bool:
+    return style in THEMES or style in LAYOUTS
+
+
+def label(style: str) -> str:
+    return THEMES[style].label if style in THEMES else LAYOUTS[style][0]
+
+
+def description(style: str) -> str:
+    return THEMES[style].description if style in THEMES else LAYOUTS[style][1]
 
 
 class PrefStore(Protocol):
@@ -57,6 +74,6 @@ async def resolve(db: PrefStore, user_id: int, service: str) -> str:
 def current_choice(rows: list[dict[str, Any]], user_id: int, service: str) -> str | None:
     """The explicit choice stored for exactly this scope and service (None = using the default)."""
     for r in rows:
-        if int(r["user_id"]) == user_id and r["service"] == service and r["style"] in THEMES:
+        if int(r["user_id"]) == user_id and r["service"] == service and known(r["style"]):
             return r["style"]
     return None

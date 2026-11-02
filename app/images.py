@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 # ENKA_ICON_BASE / AMBR_ICON_BASE), so those hosts must be allowed besides HoYoverse's own CDNs.
 ALLOWED_HOST_SUFFIXES = (".hoyoverse.com", ".hoyolab.com", ".mihoyo.com")
 ALLOWED_HOSTS = ("enka.network", "gi.yatta.moe")
-MAX_BYTES = 3 * 1024 * 1024
+MAX_BYTES = 8 * 1024 * 1024  # splash art PNGs can be several MB
 CACHE_SIZE = 300
 TIMEOUT = aiohttp.ClientTimeout(total=12)
 

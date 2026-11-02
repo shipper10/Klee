@@ -122,3 +122,32 @@ async def test_send_character_flows():
         c2 = ctx(Prov())
         await bot._send_character(c2, 1, n, ACCOUNT, q)
         assert text in c2.bot.messages[0][1] and not c2.bot.photos
+
+
+def test_splash_candidates_and_showcase_render():
+    from app.render_showcase import render_character_showcase
+
+    c = CharacterDetail.from_raw(raw(), 10000089)
+    (key, urls), = c.splash_candidates()
+    assert key == c.splash_key and urls[0] == "https://enka.network/ui/UI_Gacha_AvatarImg_Furina.png" and "yatta" in urls[1]
+    icons = {u: _icon(u) for u, _ in c.icon_candidates()}
+    for with_splash in (True, False):
+        ic = dict(icons)
+        if with_splash:
+            buf = io.BytesIO()
+            Image.new("RGB", (2048, 1024), (50, 80, 150)).save(buf, "PNG")
+            ic[c.splash_key] = buf.getvalue()
+        png = render_character_showcase(c, nickname="x", uid="700000001", server="os_euro", icons=ic, fetched_at=NOW, source="live")
+        Image.open(io.BytesIO(png)).verify()
+    # no icons at all and sparse data must not crash
+    sparse = CharacterDetail(id=1, name="X", element="Weird")
+    Image.open(io.BytesIO(render_character_showcase(sparse, nickname="", uid="1", server="os_euro", icons={}, fetched_at=NOW, source="cached"))).verify()
+
+
+def test_showcase_style_only_for_character_and_selectable():
+    from app.styles import is_valid, pick
+
+    assert is_valid("character", "showcase") and not is_valid("abyss", "showcase")
+    rows = [{"user_id": 5, "service": "*", "style": "showcase"}]
+    assert pick(rows, 5, "character") == "showcase"
+    assert pick(rows, 5, "abyss") == "classic"  # a layout the service does not have falls back
