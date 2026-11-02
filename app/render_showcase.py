@@ -14,21 +14,19 @@ from app.character import ARTIFACT_SLOTS, CharacterDetail
 from app.regions import mask_uid, server_label
 from app.ui_kit import character_tile, draw_star, fit_text, font, load_icon
 
-REPORT_VERSION = "showcase-v1"
-W = 1280
-M = 40
-ART_W, ART_H = 660, 640
-RX = 690  # left edge of the right column
-RW = W - M - RX
-CARD_H = 296
+REPORT_VERSION = "showcase-v2"
+W, H = 1600, 760
+M = 20
+ART_W = 600
+MX, MW = 600, 430  # middle column
+AX, AW = 1050, W - M - 1050  # artifact column
+ROW_H, ROW_GAP = 138, 8
 
 ELEMENT = {
     "Pyro": (255, 122, 84), "Hydro": (70, 160, 255), "Anemo": (110, 230, 190), "Electro": (192, 124, 255),
     "Dendro": (150, 220, 70), "Cryo": (150, 226, 255), "Geo": (255, 205, 90),
 }
 DEFAULT_ACCENT = (226, 201, 150)
-GLASS = (10, 12, 26, 178)
-EDGE = (255, 255, 255, 38)
 TEXT = (240, 241, 248)
 MUTED = (170, 174, 200)
 
@@ -46,20 +44,25 @@ def _fade_mask(w: int, h: int, right: int, bottom: int) -> Image.Image:
     return mask
 
 
-def _glass(d: ImageDraw.ImageDraw, box: tuple[int, int, int, int], radius: int = 22) -> None:
-    d.rounded_rectangle(box, radius=radius, fill=GLASS, outline=EDGE, width=2)
+def _glass(d: ImageDraw.ImageDraw, box: tuple[int, int, int, int], accent: tuple, radius: int = 20) -> None:
+    """Element-tinted dark glass: the accent colour mixed deep into the background."""
+    tint = tuple(round(a * 0.22 + 10 * 0.78) for a in accent)
+    d.rounded_rectangle(box, radius=radius, fill=(*tint, 196), outline=(*accent, 70), width=2)
 
 
-def _background(c: CharacterDetail, splash: Image.Image | None, portrait: Image.Image | None, accent: tuple, h: int) -> Image.Image:
+ABBR = {"Energy Recharge": "ER", "Elemental Mastery": "EM"}
+
+
+def _background(splash: Image.Image | None, portrait: Image.Image | None, accent: tuple, h: int) -> Image.Image:
     base = splash or portrait
     if base is not None:
-        bg = ImageOps.fit(base.convert("RGB"), (W, h), method=Image.BILINEAR, centering=(0.35, 0.3))
+        bg = ImageOps.fit(base.convert("RGB"), (W, h), method=Image.BILINEAR, centering=(0.2, 0.3))
         bg = bg.resize((W // 4, h // 4)).filter(ImageFilter.GaussianBlur(9)).resize((W, h), Image.BILINEAR)
-        bg = Image.blend(bg, Image.new("RGB", (W, h), (8, 9, 20)), 0.74)
+        bg = Image.blend(bg, Image.new("RGB", (W, h), (8, 9, 20)), 0.66)
     else:
         bg = Image.new("RGB", (W, h), (12, 13, 28))
     glow = Image.new("RGB", (W, h), accent)
-    ramp = Image.linear_gradient("L").resize((W, h)).point(lambda v: int((255 - v) * 0.20))
+    ramp = Image.linear_gradient("L").resize((W, h)).point(lambda v: int((255 - v) * 0.34))
     bg.paste(glow, (0, 0), ramp)
     return bg
 
@@ -71,118 +74,124 @@ def render_character_showcase(
     accent = ELEMENT.get(c.element, DEFAULT_ACCENT)
     splash = load_icon(icons.get(c.splash_key))
     portrait = load_icon(icons.get(c.icon))
-    h = 60 + ART_H + 24 + CARD_H + 150
-    img = _background(c, splash, portrait, accent, h)
+    img = _background(splash, portrait, accent, H)
     d = ImageDraw.Draw(img, "RGBA")
 
-    # --- art
+    # --- art (full height, fading into the middle column)
     if splash is not None:
-        art = ImageOps.fit(splash, (ART_W, ART_H), method=Image.LANCZOS, centering=(0.5, 0.25))
-        art_rgba = art.copy()
-        art_rgba.putalpha(_fade_mask(ART_W, ART_H, right=170, bottom=200))
-        img.paste(art_rgba, (0, 0), art_rgba)
+        art = ImageOps.fit(splash, (ART_W + 60, H), method=Image.LANCZOS, centering=(0.5, 0.3))
+        rgba = art.copy()
+        rgba.putalpha(_fade_mask(ART_W + 60, H, right=200, bottom=120))
+        img.paste(rgba, (0, 0), rgba)
     elif portrait is not None:
-        size = 420
-        p = ImageOps.contain(portrait, (size, size), method=Image.LANCZOS)
-        img.paste(p, (M + 80, 90), p)
+        p = ImageOps.contain(portrait, (420, 420), method=Image.LANCZOS)
+        img.paste(p, (100, 170), p)
 
-    # --- name block (bottom-left of the art)
-    d.rectangle((0, 0, 8, ART_H), fill=accent + (255,))
+    # legibility: darken behind the name (top) and the footer (bottom)
+    shade = Image.new("RGBA", (ART_W, H), (0, 0, 0, 0))
+    top = Image.linear_gradient("L").transpose(Image.FLIP_TOP_BOTTOM).resize((ART_W, 280)).point(lambda v: int(v * 0.62))
+    bottom = Image.linear_gradient("L").resize((ART_W, 140)).point(lambda v: int(v * 0.70))
+    shade.paste((0, 0, 0, 255), (0, 0), top)
+    shade.paste((0, 0, 0, 255), (0, H - 140), bottom)
+    img.paste(shade, (0, 0), shade)
+    d = ImageDraw.Draw(img, "RGBA")
+
+    # --- name block (top-left)
     for i in range(c.rarity):
-        draw_star(d, M + 14 + i * 34, 400, 14, accent)
-    name_font = font("serif-bold", 76)
-    d.text((M, 424), fit_text(d, c.name or "Unknown", name_font, ART_W - 2 * M), font=name_font, fill=TEXT)
+        draw_star(d, 44 + i * 32, 40, 13, accent)
+    name_font = font("serif-bold", 64)
+    d.text((M + 14, 62), fit_text(d, c.name or "Unknown", name_font, ART_W - 60), font=name_font, fill=TEXT)
     chip = c.element or "-"
-    cw = int(d.textlength(chip, font=font("semibold", 24))) + 36
-    d.rounded_rectangle((M, 530, M + cw, 570), radius=20, fill=accent + (255,))
-    d.text((M + cw / 2, 550), chip, font=font("semibold", 24), fill=(20, 20, 34), anchor="mm")
-    d.text((M + cw + 18, 550), f"Lv. {c.level}   ·   Friendship {c.friendship}", font=font("medium", 26), fill=TEXT, anchor="lm")
+    cw = int(d.textlength(chip, font=font("semibold", 22))) + 32
+    d.rounded_rectangle((M + 14, 148, M + 14 + cw, 184), radius=18, fill=accent + (255,))
+    d.text((M + 14 + cw / 2, 166), chip, font=font("semibold", 22), fill=(20, 20, 34), anchor="mm")
+    d.text((M + 14 + cw + 16, 166), f"Lv. {c.level}   ·   Friendship {c.friendship}", font=font("medium", 24), fill=TEXT, anchor="lm")
+    # constellations: a column of circles like the Enka layout
     for i in range(6):
         on = i < c.constellation
-        cx = M + 16 + i * 44
-        d.ellipse((cx - 15, 590, cx + 15, 620), fill=accent + (255,) if on else (255, 255, 255, 30), outline=(255, 255, 255, 80))
-        d.text((cx, 605), f"{i + 1}", font=font("bold", 17), fill=(20, 20, 34) if on else MUTED, anchor="mm")
-    d.text((M + 6 * 44 + 8, 605), f"C{c.constellation}", font=font("bold", 24), fill=accent, anchor="lm")
+        cy = 250 + i * 58
+        d.ellipse((M + 14, cy - 22, M + 14 + 44, cy + 22), fill=accent + (255,) if on else (10, 12, 26, 170), outline=accent + (200,), width=2)
+        d.text((M + 14 + 22, cy), f"{i + 1}" if on else "🔒"[:0] + f"{i + 1}", font=font("bold", 20), fill=(20, 20, 34) if on else MUTED, anchor="mm")
+    # footer over the art
+    label = {"live": "Live data", "cached": "Cached data", "stale": "Stale data"}.get(source, "Data")
+    stamp = fetched_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    d.text((M + 14, H - 78), f"{nickname or 'Traveler'}  ·  {server_label(server)}  ·  UID {mask_uid(uid)}", font=font("medium", 20), fill=TEXT)
+    d.text((M + 14, H - 52), f"{label}, fetched {stamp}", font=font("regular", 18), fill=MUTED)
+    d.text((M + 14, H - 28), f"Unofficial community tool, not affiliated with HoYoverse  ·  {REPORT_VERSION}", font=font("regular", 16), fill=MUTED)
 
-    # --- weapon
+    # --- middle: weapon, talents, attributes
     y = M
     wh = 168
-    _glass(d, (RX, y, RX + RW, y + wh))
+    _glass(d, (MX, y, MX + MW, y + wh), accent)
     if c.weapon:
         w = c.weapon
-        character_tile(img, d, RX + 22, y + 22, 100, rarity=w.rarity, level=None, icon=load_icon(icons.get(w.icon)))
-        tx = RX + 22 + 100 + 24
-        d.text((tx, y + 26), fit_text(d, w.name, font("semibold", 27), RX + RW - 22 - tx), font=font("semibold", 27), fill=TEXT)
-        d.text((tx, y + 68), f"Lv. {w.level}  ·  Refinement {w.refinement}", font=font("regular", 23), fill=MUTED)
-        parts = [f"{s.name} {s.value}" for s in (w.main, w.sub) if s]
-        d.text((tx, y + 108), fit_text(d, "   ".join(parts), font("medium", 22), RX + RW - 22 - tx), font=font("medium", 22), fill=accent)
+        character_tile(img, d, MX + 20, y + 20, 108, rarity=w.rarity, level=None, icon=load_icon(icons.get(w.icon)))
+        tx = MX + 20 + 108 + 20
+        d.text((tx, y + 24), fit_text(d, w.name, font("semibold", 22), MX + MW - 18 - tx), font=font("semibold", 22), fill=TEXT)
+        d.text((tx, y + 62), f"Lv. {w.level}   ·   R{w.refinement}", font=font("medium", 22), fill=MUTED)
+        bx = tx
+        for st in [x for x in (w.main, w.sub) if x]:
+            text = f"{ABBR.get(st.name, st.name)} {st.value}"
+            bw = int(d.textlength(text, font=font("semibold", 18))) + 18
+            d.rounded_rectangle((bx, y + 104, bx + bw, y + 142), radius=10, fill=(255, 255, 255, 26))
+            d.text((bx + bw / 2, y + 123), text, font=font("semibold", 18), fill=accent, anchor="mm")
+            bx += bw + 6
     else:
-        d.text((RX + 24, y + 70), "No weapon data", font=font("regular", 24), fill=MUTED)
-    y += wh + 16
+        d.text((MX + 24, y + 70), "No weapon data", font=font("regular", 24), fill=MUTED)
+    y += wh + 12
 
-    # --- talents
-    th = 112
-    _glass(d, (RX, y, RX + RW, y + th))
+    th = 96
+    _glass(d, (MX, y, MX + MW, y + th), accent)
     shown = c.talents[:3]
-    colw = (RW - 44) // 3
+    colw = (MW - 36) // 3
     for i, t in enumerate(shown):
-        tx = RX + 22 + i * colw
-        d.text((tx, y + 18), fit_text(d, t.name, font("regular", 19), colw - 14), font=font("regular", 19), fill=MUTED)
-        d.text((tx, y + 70), f"Lv. {t.level}", font=font("bold", 34), fill=TEXT, anchor="lm")
+        tx = MX + 18 + i * colw
+        d.text((tx, y + 18), fit_text(d, t.name, font("regular", 18), colw - 12), font=font("regular", 18), fill=MUTED)
+        d.text((tx, y + 62), f"Lv. {t.level}", font=font("bold", 30), fill=TEXT, anchor="lm")
     if not shown:
-        d.text((RX + 24, y + 42), "No talent data", font=font("regular", 24), fill=MUTED)
-    y += th + 16
+        d.text((MX + 20, y + 34), "No talent data", font=font("regular", 22), fill=MUTED)
+    y += th + 12
 
-    # --- attributes
-    sh = ART_H + M - y
-    _glass(d, (RX, y, RX + RW, y + sh))
-    rows = sh - 24
-    per_col = max(1, rows // 40)
-    colw = (RW - 44 - 20) // 2
-    for i, s in enumerate(c.stats[: per_col * 2]):
-        cx = RX + 22 + (i // per_col) * (colw + 20)
-        cy = y + 20 + (i % per_col) * 40
-        d.text((cx, cy + 20), fit_text(d, s.name, font("regular", 21), colw - int(d.textlength(s.value, font=font("semibold", 23))) - 14), font=font("regular", 21), fill=MUTED, anchor="lm")
-        d.text((cx + colw, cy + 20), s.value, font=font("semibold", 23), fill=TEXT, anchor="rm")
-        if i % per_col != per_col - 1:
-            d.line((cx, cy + 40, cx + colw, cy + 40), fill=(255, 255, 255, 18), width=1)
+    sh = H - M - y
+    _glass(d, (MX, y, MX + MW, y + sh), accent)
+    per = max(1, (sh - 20) // 44)
+    for i, st in enumerate(c.stats[:per]):
+        cy = y + 14 + i * 44 + 22
+        d.text((MX + 22, cy), fit_text(d, st.name, font("medium", 23), MW - 44 - int(d.textlength(st.value, font=font("bold", 26))) - 14), font=font("medium", 23), fill=TEXT, anchor="lm")
+        d.text((MX + MW - 22, cy), st.value, font=font("bold", 26), fill=TEXT, anchor="rm")
+        if i < min(per, len(c.stats)) - 1:
+            d.line((MX + 22, cy + 22, MX + MW - 22, cy + 22), fill=(255, 255, 255, 22), width=1)
 
-    # --- artifacts
-    ay = ART_H + M + 24
-    n = 5
-    gap = 16
-    aw = (W - 2 * M - (n - 1) * gap) // n
+    # --- artifacts: five rows
     by_slot = {a.slot: a for a in c.artifacts}
-    for i in range(n):
-        x = M + i * (aw + gap)
-        _glass(d, (x, ay, x + aw, ay + CARD_H))
+    for i in range(5):
+        ay = M + i * (ROW_H + ROW_GAP)
+        _glass(d, (AX, ay, AX + AW, ay + ROW_H), accent)
         a = by_slot.get(i + 1)
         if a is None:
-            d.text((x + aw / 2, ay + CARD_H / 2), ARTIFACT_SLOTS.get(i + 1, "-") + "\nempty", font=font("regular", 22), fill=MUTED, anchor="mm", align="center")
+            d.text((AX + AW / 2, ay + ROW_H / 2), f"{ARTIFACT_SLOTS.get(i + 1, '-')}  ·  empty", font=font("regular", 22), fill=MUTED, anchor="mm")
             continue
-        character_tile(img, d, x + 14, ay + 14, 76, rarity=a.rarity, level=None, icon=load_icon(icons.get(a.icon)))
-        d.text((x + aw - 16, ay + 40), f"+{a.level}", font=font("bold", 30), fill=accent, anchor="rm")
-        d.text((x + aw - 16, ay + 70), ARTIFACT_SLOTS.get(a.slot, ""), font=font("regular", 18), fill=MUTED, anchor="rm")
-        d.text((x + 16, ay + 100), fit_text(d, a.set_name, font("regular", 18), aw - 32), font=font("regular", 18), fill=MUTED)
+        character_tile(img, d, AX + 16, ay + 16, 106, rarity=a.rarity, level=None, icon=load_icon(icons.get(a.icon)))
+        d.rounded_rectangle((AX + 16, ay + 16, AX + 16 + 62, ay + 16 + 28), radius=8, fill=(10, 12, 26, 220))
+        d.text((AX + 16 + 31, ay + 16 + 14), f"+{a.level}", font=font("bold", 19), fill=accent, anchor="mm")
+        mx = AX + 16 + 106 + 16
+        d.text((mx, ay + 18), ARTIFACT_SLOTS.get(a.slot, ""), font=font("regular", 17), fill=MUTED)
         if a.main:
-            d.text((x + 16, ay + 124), fit_text(d, a.main.name, font("semibold", 20), aw - 32), font=font("semibold", 20), fill=accent)
-            d.text((x + 16, ay + 150), a.main.value, font=font("bold", 30), fill=TEXT)
-        d.line((x + 16, ay + 194, x + aw - 16, ay + 194), fill=(255, 255, 255, 36), width=1)
-        for j, s in enumerate(a.subs[:4]):
-            sy = ay + 208 + j * 22
-            d.text((x + 16, sy), fit_text(d, s.name, font("regular", 18), aw - 32 - int(d.textlength(s.value, font=font("semibold", 19))) - 8), font=font("regular", 18), fill=MUTED, anchor="lm")
-            d.text((x + aw - 16, sy), s.value, font=font("semibold", 19), fill=TEXT, anchor="rm")
+            d.text((mx, ay + 42), fit_text(d, ABBR.get(a.main.name, a.main.name), font("semibold", 20), 150), font=font("semibold", 20), fill=accent)
+            d.text((mx, ay + 82), a.main.value, font=font("bold", 36), fill=TEXT, anchor="lm")
+        d.text((mx, ay + 116), fit_text(d, a.set_name, font("regular", 16), 150), font=font("regular", 16), fill=MUTED)
+        sx0 = mx + 166
+        sw = (AX + AW - 16 - sx0) // 2
+        for j, st in enumerate(a.subs[:4]):
+            sx = sx0 + (j % 2) * sw
+            sy = ay + 22 + (j // 2) * 58
+            name = ABBR.get(st.name, st.name)
+            d.text((sx, sy), fit_text(d, name, font("regular", 18), sw - 10), font=font("regular", 18), fill=MUTED)
+            d.text((sx, sy + 24), st.value, font=font("semibold", 26), fill=TEXT)
+        if c.sets and i == 4:
+            pass
 
-    # --- footer
-    fy = ay + CARD_H + 22
-    if c.sets:
-        d.text((M, fy), "Sets: " + ",  ".join(c.sets), font=font("medium", 22), fill=accent)
-        fy += 36
-    label = {"live": "Live data", "cached": "Cached data", "stale": "Stale data (HoYoLAB unreachable)"}.get(source, "Data")
-    stamp = fetched_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    d.text((M, fy), f"{nickname or 'Traveler'}  ·  {server_label(server)}  ·  UID {mask_uid(uid)}  ·  {label}, fetched {stamp}", font=font("regular", 20), fill=MUTED)
-    d.text((M, fy + 30), f"Unofficial community tool, not affiliated with HoYoverse  ·  {REPORT_VERSION}", font=font("regular", 18), fill=MUTED)
-    out = img.crop((0, 0, W, min(h, fy + 70)))
+    out = img
     import io
     buf = io.BytesIO()
     out.save(buf, format="PNG")
