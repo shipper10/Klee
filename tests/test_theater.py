@@ -127,3 +127,16 @@ async def test_send_theater_previous_flag_and_hint():
     c2 = ctx(Prov(TheaterData(unlocked=True)))
     await bot._send_theater(c2, 1, 411, ACCOUNT, show_all=False)
     assert "/theater previous" in c2.bot.messages[0][1]
+
+
+def test_describe_raw_is_safe_and_shows_picks():
+    from app.theater import describe_raw
+
+    raw = {"is_unlock": True, "data": [
+        {"schedule": {"start_time": "1793500000", "end_time": "1796100000"}, "has_data": False, "has_detail_data": False, "detail": {}},
+        {"schedule": {"start_time": "1790900000", "end_time": "1793400000"}, "has_data": True, "has_detail_data": True,
+         "detail": {"rounds_data": [{}, {}]}, "stat": {"max_round_id": 3}},
+    ]}
+    text = describe_raw(raw, now=1793600000)
+    assert "seasons in payload: 2" in text and "acts=2" in text and "current picks: 2026-" in text
+    assert "previous picks:" in text and "nothing" not in text

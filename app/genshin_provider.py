@@ -30,6 +30,7 @@ from app import character as character_mod
 from app.character import CharacterDetail
 from app.crypto import CredentialCipher, CryptoError
 from app.db import Database
+from app import timing
 from app.regions import server_utc_offset
 from app.errors import ChronicleHidden, NotesDisabled, ReauthRequired, UpstreamUnavailable
 from app.linking import parse_ts, utcnow
@@ -126,6 +127,15 @@ class GenshinProvider:
         key = "diary:previous" if previous else "diary:current"
         return await self._cached(account, key, DIARY_TTL, diary_mod.SCHEMA_VERSION, fetch, DiaryData.from_json)
 
+    async def get_theater_raw(self, account: Mapping[str, Any]) -> Any:
+        """Uncached raw payload, for the owner's /debug check."""
+        uid = int(account["game_uid"])
+
+        async def call(client: genshin.Client) -> Any:
+            return await client.get_imaginarium_theater(uid, need_detail=True, raw=True)
+
+        return await self._call(account, call)
+
     # ---- caching --------------------------------------------------------
     async def _cached(
         self,
@@ -139,13 +149,15 @@ class GenshinProvider:
         account_id = str(account["id"])
         lock = self._locks.setdefault(account_id, asyncio.Lock())
         async with lock:
-            row = await self._db.get_cache(account_id, cache_key)
+            with timing.timed(cache_key.split(':')[0], 'cache-db'):
+                row = await self._db.get_cache(account_id, cache_key)
             cached = self._decode(row, schema_version, from_json)
             if cached and parse_ts(row["expires_at"]) > utcnow():  # type: ignore[index]
                 return Report(cached.data, cached.fetched_at, "cached")
 
             try:
-                data = await fetch(account)
+                with timing.timed(cache_key.split(':')[0], 'hoyolab'):
+                    data = await fetch(account)
             except UpstreamUnavailable:
                 # Only "HoYoLAB is down" falls back to old data; auth/privacy problems must stay visible.
                 if cached:

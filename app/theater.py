@@ -158,3 +158,32 @@ class TheaterData:
             fastest=[char(a, value=num(a.get("value"))) for a in fight.get("shortest_avatar_list") or []],
             acts=acts,
         )
+
+
+def describe_raw(raw: Mapping[str, Any], now: int | None = None) -> str:
+    """Safe summary of the payload's shape (no names, no UID, no character data) for troubleshooting."""
+    import time
+    from datetime import datetime, timezone
+
+    now = int(time.time()) if now is None else now
+
+    def ts(v: Any) -> str:
+        try:
+            return datetime.fromtimestamp(int(v), timezone.utc).strftime("%Y-%m-%d %H:%M")
+        except (TypeError, ValueError, OSError):
+            return str(v)
+
+    entries = raw.get("data") or []
+    lines = [f"now (UTC): {ts(now)}", f"is_unlock: {raw.get('is_unlock')}", f"seasons in payload: {len(entries)}"]
+    for i, e in enumerate(entries):
+        sc = e.get("schedule") or {}
+        det = e.get("detail") or {}
+        lines.append(
+            f"#{i}: {ts(sc.get('start_time'))} -> {ts(sc.get('end_time'))} | has_data={e.get('has_data')} "
+            f"has_detail={e.get('has_detail_data')} acts={len(det.get('rounds_data') or [])}"
+        )
+    for name, prev in (("current", False), ("previous", True)):
+        picked = pick_season(entries, prev, now)
+        sc = picked.get("schedule") or {}
+        lines.append(f"{name} picks: " + (f"{ts(sc.get('start_time'))} (acts={len((picked.get('detail') or {}).get('rounds_data') or [])})" if picked else "nothing"))
+    return "\n".join(lines)
