@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from app.character import ARTIFACT_SLOTS, CharacterDetail
 from app.regions import mask_uid, server_label
-from app.ui_kit import GOLD, GOLD_DARK, MUTED, TEXT, character_tile, fit_text, font, load_icon, new_canvas, panel, to_png
+from app.ui_kit import C, character_tile, fit_text, font, load_icon, new_canvas, panel, themed, to_png
 
 REPORT_VERSION = "character-v1"
 W = 1080
@@ -17,6 +17,7 @@ HEAD_H = 250
 WEAPON_H = 182
 
 
+@themed
 def render_character_card(
     c: CharacterDetail, *, nickname: str, uid: str, server: str, icons: dict[str, bytes], fetched_at: datetime, source: str,
 ) -> bytes:
@@ -33,85 +34,85 @@ def render_character_card(
     panel(d, (PAD, y, W - PAD, y + HEAD_H), radius=26)
     character_tile(img, d, PAD + 30, y + 30, 160, rarity=c.rarity, level=c.level, icon=load_icon(icons.get(c.icon)), strip_font_size=24)
     tx = PAD + 30 + 160 + 34
-    d.text((tx, y + 36), fit_text(d, c.name or "Unknown", font("bold", 52), W - PAD - 30 - tx), font=font("bold", 52), fill=TEXT)
-    d.text((tx, y + 106), f"{c.element}  ·  C{c.constellation}  ·  Friendship {c.friendship}", font=font("regular", 26), fill=GOLD)
-    d.text((tx, y + 156), f"{c.rarity}-star", font=font("medium", 24), fill=MUTED)
-    d.text((tx, y + 200), f"{nickname or 'Traveler'}  ·  {server_label(server)}  ·  UID {mask_uid(uid)}", font=font("regular", 22), fill=MUTED)
+    d.text((tx, y + 36), fit_text(d, c.name or "Unknown", font("bold", 52), W - PAD - 30 - tx), font=font("bold", 52), fill=C.TEXT)
+    d.text((tx, y + 106), f"{c.element}  ·  C{c.constellation}  ·  Friendship {c.friendship}", font=font("regular", 26), fill=C.GOLD)
+    d.text((tx, y + 156), f"{c.rarity}-star", font=font("medium", 24), fill=C.MUTED)
+    d.text((tx, y + 200), f"{nickname or 'Traveler'}  ·  {server_label(server)}  ·  UID {mask_uid(uid)}", font=font("regular", 22), fill=C.MUTED)
     y += HEAD_H + 24
 
     # --- weapon
     if c.weapon:
         w = c.weapon
         panel(d, (PAD, y, W - PAD, y + WEAPON_H), radius=26)
-        d.text((PAD + 30, y + 22), "Weapon", font=font("serif", 26), fill=GOLD)
+        d.text((PAD + 30, y + 22), "Weapon", font=font("serif", 26), fill=C.GOLD)
         character_tile(img, d, PAD + 30, y + 64, 90, rarity=w.rarity, level=None, icon=load_icon(icons.get(w.icon)))
         wx = PAD + 30 + 90 + 28
-        d.text((wx, y + 70), fit_text(d, w.name, font("semibold", 32), W - PAD - 30 - wx), font=font("semibold", 32), fill=TEXT)
-        d.text((wx, y + 116), f"Lv. {w.level}  ·  Refinement {w.refinement}", font=font("regular", 24), fill=MUTED)
+        d.text((wx, y + 70), fit_text(d, w.name, font("semibold", 32), W - PAD - 30 - wx), font=font("semibold", 32), fill=C.TEXT)
+        d.text((wx, y + 116), f"Lv. {w.level}  ·  Refinement {w.refinement}", font=font("regular", 24), fill=C.MUTED)
         sx = W - PAD - 30
         if w.main:
-            d.text((sx, y + 74), f"{w.main.name}  {w.main.value}", font=font("medium", 24), fill=TEXT, anchor="rm")
+            d.text((sx, y + 74), f"{w.main.name}  {w.main.value}", font=font("medium", 24), fill=C.TEXT, anchor="rm")
         if w.sub:
-            d.text((sx, y + 112), f"{w.sub.name}  {w.sub.value}", font=font("medium", 24), fill=TEXT, anchor="rm")
+            d.text((sx, y + 112), f"{w.sub.name}  {w.sub.value}", font=font("medium", 24), fill=C.TEXT, anchor="rm")
         y += weapon_h + 24
 
     # --- artifacts
     if c.artifacts:
         panel(d, (PAD, y, W - PAD, y + arts_h), radius=26)
-        d.text((PAD + 30, y + 24), "Artifacts", font=font("semibold", 32), fill=TEXT)
+        d.text((PAD + 30, y + 24), "Artifacts", font=font("semibold", 32), fill=C.TEXT)
         ay = y + 80
         for a in c.artifacts:
-            d.line((PAD + 30, ay - 6, W - PAD - 30, ay - 6), fill=(255, 255, 255, 30), width=2)
+            d.line((PAD + 30, ay - 6, W - PAD - 30, ay - 6), fill=C.tint(30), width=2)
             character_tile(img, d, PAD + 30, ay + 4, 82, rarity=a.rarity, level=f"+{a.level}", icon=load_icon(icons.get(a.icon)), strip_font_size=16)
             ax = PAD + 30 + 82 + 24
-            d.text((ax, ay + 10), f"{ARTIFACT_SLOTS.get(a.slot, '')}  ·  {fit_text(d, a.set_name, font('regular', 20), 300)}", font=font("regular", 20), fill=MUTED)
+            d.text((ax, ay + 10), f"{ARTIFACT_SLOTS.get(a.slot, '')}  ·  {fit_text(d, a.set_name, font('regular', 20), 300)}", font=font("regular", 20), fill=C.MUTED)
             if a.main:
-                d.text((ax, ay + 40), f"{a.main.name}", font=font("semibold", 24), fill=GOLD)
-                d.text((ax, ay + 72), a.main.value, font=font("bold", 30), fill=TEXT)
+                d.text((ax, ay + 40), f"{a.main.name}", font=font("semibold", 24), fill=C.GOLD)
+                d.text((ax, ay + 72), a.main.value, font=font("bold", 30), fill=C.TEXT)
             for i, s in enumerate(a.subs[:4]):
                 sx = ax + 330 + (i % 2) * 300
                 sy = ay + 12 + (i // 2) * 58
-                d.text((sx, sy), f"{s.name}", font=font("regular", 20), fill=MUTED)
-                d.text((sx, sy + 24), s.value, font=font("semibold", 22), fill=TEXT)
+                d.text((sx, sy), f"{s.name}", font=font("regular", 20), fill=C.MUTED)
+                d.text((sx, sy + 24), s.value, font=font("semibold", 22), fill=C.TEXT)
             ay += ART_H
         if c.sets:
-            d.text((PAD + 30, ay + 6), "Sets: " + ",  ".join(c.sets), font=font("medium", 22), fill=GOLD)
+            d.text((PAD + 30, ay + 6), "Sets: " + ",  ".join(c.sets), font=font("medium", 22), fill=C.GOLD)
         y += arts_h + 24
 
     # --- stats
     if c.stats:
         panel(d, (PAD, y, W - PAD, y + stats_h), radius=26)
-        d.text((PAD + 30, y + 24), "Attributes", font=font("semibold", 32), fill=TEXT)
+        d.text((PAD + 30, y + 24), "Attributes", font=font("semibold", 32), fill=C.TEXT)
         cw = (INNER - 60 - 28) // 3
         for i, s in enumerate(c.stats):
             cx = PAD + 30 + (i % 3) * (cw + 14)
             cy = y + 84 + (i // 3) * 82
-            d.rounded_rectangle((cx, cy, cx + cw, cy + 70), radius=12, fill=(255, 255, 255, 22))
-            d.text((cx + 16, cy + 10), fit_text(d, s.name, font("regular", 18), cw - 32), font=font("regular", 18), fill=MUTED)
-            d.text((cx + 16, cy + 48), s.value, font=font("bold", 26), fill=TEXT, anchor="lm")
+            d.rounded_rectangle((cx, cy, cx + cw, cy + 70), radius=12, fill=C.tint(22))
+            d.text((cx + 16, cy + 10), fit_text(d, s.name, font("regular", 18), cw - 32), font=font("regular", 18), fill=C.MUTED)
+            d.text((cx + 16, cy + 48), s.value, font=font("bold", 26), fill=C.TEXT, anchor="lm")
         y += stats_h + 24
 
     # --- talents + constellations
     panel(d, (PAD, y, W - PAD, y + talents_h), radius=26)
-    d.text((PAD + 30, y + 24), "Talents", font=font("semibold", 32), fill=TEXT)
+    d.text((PAD + 30, y + 24), "Talents", font=font("semibold", 32), fill=C.TEXT)
     ty = y + 84
     for t in c.talents:
-        d.text((PAD + 30, ty), fit_text(d, t.name, font("regular", 24), INNER - 200), font=font("regular", 24), fill=TEXT)
-        d.text((W - PAD - 30, ty), f"Lv. {t.level}", font=font("bold", 26), fill=GOLD, anchor="ra")
+        d.text((PAD + 30, ty), fit_text(d, t.name, font("regular", 24), INNER - 200), font=font("regular", 24), fill=C.TEXT)
+        d.text((W - PAD - 30, ty), f"Lv. {t.level}", font=font("bold", 26), fill=C.GOLD, anchor="ra")
         ty += 46
     if not c.talents:
-        d.text((PAD + 30, ty), "No talent data", font=font("regular", 24), fill=MUTED)
+        d.text((PAD + 30, ty), "No talent data", font=font("regular", 24), fill=C.MUTED)
         ty += 46
     if c.constellations:
-        d.text((PAD + 30, ty + 8), "Constellations", font=font("serif", 26), fill=GOLD)
+        d.text((PAD + 30, ty + 8), "Constellations", font=font("serif", 26), fill=C.GOLD)
         for i, (name, on) in enumerate(c.constellations[:6]):
             cx = PAD + 330 + i * 70
-            d.ellipse((cx, ty, cx + 52, ty + 52), fill=GOLD if on else (255, 255, 255, 30), outline=(255, 255, 255, 60))
-            d.text((cx + 26, ty + 26), f"C{i + 1}", font=font("bold", 20), fill=GOLD_DARK if on else MUTED, anchor="mm")
+            d.ellipse((cx, ty, cx + 52, ty + 52), fill=C.GOLD if on else C.tint(30), outline=C.tint(60))
+            d.text((cx + 26, ty + 26), f"C{i + 1}", font=font("bold", 20), fill=C.GOLD_DARK if on else C.MUTED, anchor="mm")
     y += talents_h + 24
 
     label = {"live": "Live data", "cached": "Cached data", "stale": "Stale data (HoYoLAB unreachable)"}.get(source, "Data")
     stamp = fetched_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    d.text((PAD, y + 20), f"{label}  ·  fetched {stamp}", font=font("medium", 22), fill=GOLD if source == "live" else (240, 170, 110))
-    d.text((PAD, y + 58), f"Unofficial community tool, not affiliated with HoYoverse  ·  {REPORT_VERSION}", font=font("regular", 20), fill=MUTED)
+    d.text((PAD, y + 20), f"{label}  ·  fetched {stamp}", font=font("medium", 22), fill=C.GOLD if source == "live" else C.WARN)
+    d.text((PAD, y + 58), f"Unofficial community tool, not affiliated with HoYoverse  ·  {REPORT_VERSION}", font=font("regular", 20), fill=C.MUTED)
     return to_png(img)

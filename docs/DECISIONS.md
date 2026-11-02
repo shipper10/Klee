@@ -186,3 +186,9 @@ Researched before building (genshin.py 1.7.31 source, hoyo-buddy docs):
   through genshin.py (RSA-encrypted as the library does). Link attempts are counted (5 max) as before.
 - stoken is deliberately not stored (it is a stronger credential than the cookies we need).
 Not yet tested against the real HoYoverse service: the sandbox cannot reach it. Tests use a stubbed genshin.py.
+
+## Milestone 9: image styles and /settings
+- Enka-based card libraries (enkacard, enkanetworkcard, hattvr/enka-card) were rejected: character cards only, need the in-game showcase, unmaintained since 2022-2024, no licence stated.
+- Styles are colour themes (`ui_kit.THEMES`: classic, aurora, sakura, paper) applied through `C` and the `@themed` decorator, so every renderer supports every theme. No third-party artwork is bundled. `styles.SERVICE_STYLES` is per service so a service can get its own layout later.
+- Precedence: user's pick for the service, user's "all", owner default for the service, owner default for all, classic. Stored in `style_prefs` (user_id 0 = owner default). Needs `supabase/migrations/003_style_prefs.sql`; without it everything stays classic.
+- `/settings` (private chat): inline buttons for style per service, group sharing toggle, preview image; owner section (ADMIN_TELEGRAM_IDS) sets the default for everyone. Owner scope is re-checked on every button press.

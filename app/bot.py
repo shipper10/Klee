@@ -18,6 +18,7 @@ from telegram import (
     Update,
 )
 from telegram.constants import ChatAction, ChatType
+from telegram.error import BadRequest
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from app.db import Database
@@ -26,6 +27,9 @@ from app.genshin_provider import GenshinProvider
 from app.images import ImageFetcher
 from app.linking import TOKEN_TTL, hash_token, new_token, utcnow
 from app.regions import mask_uid, server_label, server_utc_offset
+from app.styles import resolve as resolve_style
+from app.ui_kit import THEMES
+from app import settings_menu
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
 from app.render_character import render_character_card
@@ -50,6 +54,7 @@ COMMANDS = [
     BotCommand("profile", "Profile overview + top characters"),
     BotCommand("characters", "All your characters"),
     BotCommand("character", "Details of one character: /character Furina"),
+    BotCommand("settings", "Settings: image style, group sharing"),
     BotCommand("share", "Let group members view your reports (on/off)"),
     BotCommand("unlink", "Remove a linked account"),
     BotCommand("privacy", "What is stored and why"),
@@ -69,6 +74,7 @@ HELP_TEXT = (
     "/profile – account overview with your top characters\n"
     "/characters – all your characters\n"
     "/character <name> – weapon, artifacts, talents and stats of one character\n"
+    "/settings – image style (look of the reports) and group sharing, with buttons\n"
     "/share on|off – let group members view your reports (reply to your message with a command)\n"
     "/groupreports on|off – group admins: enable or disable the bot in a group\n"
     "/unlink – remove an account and its stored session\n"
@@ -271,6 +277,83 @@ async def updateicons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.effective_message.reply_text(f"Update failed: {type(exc).__name__}")
 
 
+async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _private_only(update):
+        return
+    deps, user_id = _deps(context), update.effective_user.id
+    text, markup = settings_menu.home(user_id in deps.admin_ids, await _sharing_state(deps, user_id))
+    await update.effective_message.reply_text(text, reply_markup=markup)
+
+
+async def _sharing_state(deps: Deps, user_id: int) -> bool | None:
+    """True/False when the user has linked accounts, None when there is nothing to share yet."""
+    rows = await deps.db.list_accounts(user_id)
+    if not rows:
+        return None
+    return any(r.get("shared_in_groups") for r in rows)
+
+
+async def on_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    deps, user_id = _deps(context), query.from_user.id
+    if not (query.message and query.message.chat.type == ChatType.PRIVATE):
+        await query.answer("Open /settings in a private chat with me.", show_alert=True)
+        return
+    parts = query.data.split(":")[1:]  # after "st"
+    action = parts[0] if parts else ""
+    is_owner = user_id in deps.admin_ids
+    try:
+        if action == "close":
+            await query.answer()
+            await query.delete_message()
+            return
+        if action == "prev":
+            await query.answer()
+            png = await asyncio.to_thread(settings_menu.render_style_preview)
+            await context.bot.send_photo(query.message.chat.id, photo=io.BytesIO(png), caption="The available image styles")
+            return
+        if action == "share" and len(parts) == 2 and parts[1] in ("0", "1"):
+            if await _sharing_state(deps, user_id) is None:
+                await query.answer("Link an account first with /link.", show_alert=True)
+                return
+            await deps.db.set_sharing(user_id, parts[1] == "1")
+            await query.answer("Saved")
+            view = "home"
+        elif action in ("own", "set") and (action == "own" or (len(parts) == 4 and parts[1] == "g")) and not is_owner:
+            await query.answer("Only the bot owner can change this.", show_alert=True)
+            return
+        elif action == "set":
+            if len(parts) != 4 or parts[1] not in ("u", "g") or not settings_menu.valid_svc(parts[2]):
+                await query.answer()
+                return
+            scope, svc, style = parts[1], settings_menu.svc_key(parts[2]), parts[3]
+            if style != "default" and style not in THEMES:
+                await query.answer()
+                return
+            await deps.db.set_style_pref(0 if scope == "g" else user_id, svc, None if style == "default" else style)
+            await query.answer("Saved")
+            view = f"{'own' if scope == 'g' else 'me'}:{parts[2]}"
+        else:
+            await query.answer()
+            view = ":".join(parts) or "home"
+        rows = await deps.db.get_style_prefs(user_id)
+        vparts = view.split(":")
+        if vparts[0] == "home":
+            text, markup = settings_menu.home(is_owner, await _sharing_state(deps, user_id))
+        elif vparts[0] in ("me", "own") and len(vparts) == 1:
+            text, markup = settings_menu.service_list("g" if vparts[0] == "own" else "u", rows, user_id)
+        elif vparts[0] in ("me", "own") and len(vparts) == 2 and settings_menu.valid_svc(vparts[1]):
+            text, markup = settings_menu.style_page("g" if vparts[0] == "own" else "u", vparts[1], rows, user_id)
+        else:
+            return
+        await query.edit_message_text(text, reply_markup=markup)
+    except BadRequest:
+        pass  # "message is not modified" when the same page is shown again
+    except Exception as exc:
+        log.error("settings failed: %s", type(exc).__name__)
+        await query.answer("That did not work. Please try again.", show_alert=True)
+
+
 async def privacy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(PRIVACY_TEXT)
 
@@ -406,6 +489,7 @@ async def _send_notes(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
         _check_cooldown(deps, user_id)
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         result = await deps.provider.get_notes(account)
+        style = await resolve_style(deps.db, user_id, "notes")
         png = await asyncio.to_thread(
             render_notes_card,
             result.data,
@@ -414,6 +498,7 @@ async def _send_notes(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
             server_label=server_label(account["region"]),
             fetched_at=result.fetched_at,
             source=result.source,
+            style=style,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
@@ -450,6 +535,7 @@ async def _send_abyss(
             raise NoRecords("No Spiral Abyss records for this period yet.")
         fetched = await deps.images.fetch_first(result.data.icon_candidates())
         icons = fetched.images
+        style = await resolve_style(deps.db, user_id, "abyss")
         png = await asyncio.to_thread(
             render_abyss_card,
             result.data,
@@ -460,6 +546,7 @@ async def _send_abyss(
             fetched_at=result.fetched_at,
             source=result.source,
             full_summary=floor is None,
+            style=style,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
@@ -494,6 +581,7 @@ async def _send_profile(
         fetched = await deps.images.fetch_first(
             [(c.icon, c.candidates) for c in chars if c.icon]
         )
+        style = await resolve_style(deps.db, user_id, "profile")
         png = await asyncio.to_thread(
             render_profile_card,
             result.data,
@@ -505,6 +593,7 @@ async def _send_profile(
             fetched_at=result.fetched_at,
             source=result.source,
             summary=not show_all,
+            style=style,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
@@ -542,6 +631,7 @@ async def _send_theater(
                 + " season." + ("" if previous else " Try /theater previous.")
             )
         fetched = await deps.images.fetch_first(result.data.icon_candidates())
+        style = await resolve_style(deps.db, user_id, "theater")
         png = await asyncio.to_thread(
             render_theater_card,
             result.data,
@@ -551,6 +641,7 @@ async def _send_theater(
             tz_hours=server_utc_offset(account["region"]),
             fetched_at=result.fetched_at,
             source=result.source,
+            style=style,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
@@ -598,6 +689,7 @@ async def _send_stygian(
                 other = " Try /stygian" + ("" if multi else " coop") + "."
             raise NoRecords(f"No {'co-op' if multi else 'single player'} Stygian Onslaught records for the {when} season.{other}")
         fetched = await deps.images.fetch_first(result.data.icon_candidates(multi))
+        style = await resolve_style(deps.db, user_id, "stygian")
         png = await asyncio.to_thread(
             render_stygian_card,
             result.data,
@@ -607,6 +699,7 @@ async def _send_stygian(
             tz_hours=server_utc_offset(account["region"]),
             fetched_at=result.fetched_at,
             source=result.source,
+            style=style,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
@@ -659,6 +752,7 @@ async def _send_character(
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         result = await deps.provider.get_character(account, matches[0].id)
         fetched = await deps.images.fetch_first(result.data.icon_candidates())
+        style = await resolve_style(deps.db, user_id, "character")
         png = await asyncio.to_thread(
             render_character_card,
             result.data,
@@ -668,6 +762,7 @@ async def _send_character(
             icons=fetched.images,
             fetched_at=result.fetched_at,
             source=result.source,
+            style=style,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
@@ -770,6 +865,7 @@ def register(application: Application, deps: Deps) -> None:
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("privacy", privacy))
     application.add_handler(CommandHandler("myid", myid))
+    application.add_handler(CommandHandler("settings", settings))
     application.add_handler(CommandHandler("share", share))
     application.add_handler(CommandHandler("groupreports", groupreports))
     application.add_handler(CommandHandler("updateicons", updateicons))
@@ -788,5 +884,6 @@ def register(application: Application, deps: Deps) -> None:
     application.add_handler(CallbackQueryHandler(on_unlink_ask, pattern=rf"^unlink:{UUID_PATTERN}$"))
     application.add_handler(CallbackQueryHandler(on_unlink_confirm, pattern=rf"^unlinkok:{UUID_PATTERN}$"))
     application.add_handler(CallbackQueryHandler(on_notes_pick, pattern=rf"^notes:{UUID_PATTERN}$"))
+    application.add_handler(CallbackQueryHandler(on_settings, pattern=r"^st:[a-z0-9:_-]{1,50}$"))
     application.add_handler(CallbackQueryHandler(on_cancel, pattern=r"^cancel:0$"))
     application.add_error_handler(on_error)

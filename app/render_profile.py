@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from app.profile import ProfChar, ProfileData
 from app.regions import mask_uid, server_label
-from app.ui_kit import GOLD, GOLD_DARK, MUTED, TEXT, character_tile, fit_text, font, load_icon, new_canvas, panel, to_png
+from app.ui_kit import C, character_tile, fit_text, font, load_icon, new_canvas, panel, themed, to_png
 
 REPORT_VERSION = "profile-v1"
 W = 1080
@@ -41,6 +41,7 @@ def select_characters(p: ProfileData, show_all: bool, default_count: int = 16) -
     return chars if show_all else chars[:default_count]
 
 
+@themed
 def render_profile_card(
     data: ProfileData, *, nickname: str, uid: str, server: str, icons: dict[str, bytes],
     characters: list[ProfChar], fetched_at: datetime, source: str, summary: bool = True,
@@ -55,43 +56,43 @@ def render_profile_card(
     img, d = new_canvas(W, height)
 
     name = fit_text(d, nickname or data.nickname or "Traveler", font("bold", 52), INNER)
-    d.text((PAD, 48), name, font=font("bold", 52), fill=TEXT)
-    d.text((PAD, 118), f"Adventure Rank {data.level}  ·  {server_label(server)}  ·  UID {mask_uid(uid)}", font=font("regular", 26), fill=MUTED)
+    d.text((PAD, 48), name, font=font("bold", 52), fill=C.TEXT)
+    d.text((PAD, 118), f"Adventure Rank {data.level}  ·  {server_label(server)}  ·  UID {mask_uid(uid)}", font=font("regular", 26), fill=C.MUTED)
     title = "Battle Chronicle" if summary else "All Characters"
     pw = int(d.textlength(title, font=font("semibold", 24))) + 48
-    d.rounded_rectangle((PAD, 168, PAD + pw, 208), radius=20, fill=GOLD)
-    d.text((PAD + pw / 2, 188), title, font=font("semibold", 24), fill=GOLD_DARK, anchor="mm")
+    d.rounded_rectangle((PAD, 168, PAD + pw, 208), radius=20, fill=C.GOLD)
+    d.text((PAD + pw / 2, 188), title, font=font("semibold", 24), fill=C.GOLD_DARK, anchor="mm")
     y = header_h
 
     if summary:
         panel(d, (PAD, y, W - PAD, y + stats_h), radius=26)
-        d.text((PAD + 30, y + 36), "Overview", font=font("semibold", 32), fill=TEXT)
+        d.text((PAD + 30, y + 36), "Overview", font=font("semibold", 32), fill=C.TEXT)
         cw = (INNER - 60 - (CELL_COLS - 1) * 14) // CELL_COLS
         for i, (label, value) in enumerate(cells):
             cx = PAD + 30 + (i % CELL_COLS) * (cw + 14)
             cy = y + 90 + (i // CELL_COLS) * (CELL_H + 14)
-            d.rounded_rectangle((cx, cy, cx + cw, cy + CELL_H), radius=14, fill=(255, 255, 255, 22))
-            d.text((cx + 18, cy + 14), label, font=font("regular", 20), fill=MUTED)
-            d.text((cx + 18, cy + 69), fit_text(d, value, font("bold", 32), cw - 36), font=font("bold", 32), fill=TEXT, anchor="lm")
+            d.rounded_rectangle((cx, cy, cx + cw, cy + CELL_H), radius=14, fill=C.tint(22))
+            d.text((cx + 18, cy + 14), label, font=font("regular", 20), fill=C.MUTED)
+            d.text((cx + 18, cy + 69), fit_text(d, value, font("bold", 32), cw - 36), font=font("bold", 32), fill=C.TEXT, anchor="lm")
         y += stats_h + 24
 
     panel(d, (PAD, y, W - PAD, y + grid_h), radius=26)
-    d.text((PAD + 30, y + 36), "Characters", font=font("semibold", 32), fill=TEXT)
-    d.text((W - PAD - 30, y + 38), f"{len(characters)} / {data.characters_owned}", font=font("medium", 24), fill=MUTED, anchor="rm")
+    d.text((PAD + 30, y + 36), "Characters", font=font("semibold", 32), fill=C.TEXT)
+    d.text((W - PAD - 30, y + 38), f"{len(characters)} / {data.characters_owned}", font=font("medium", 24), fill=C.MUTED, anchor="rm")
     if not characters:
-        d.text((PAD + 30, y + 110), "No characters found", font=font("regular", 26), fill=MUTED)
+        d.text((PAD + 30, y + 110), "No characters found", font=font("regular", 26), fill=C.MUTED)
     for i, c in enumerate(characters):
         tx = PAD + 30 + (i % COLS) * (TILE + GAP)
         ty = y + 84 + (i // COLS) * ROW_H
         character_tile(img, d, tx, ty, TILE, rarity=c.rarity, level=c.level, icon=load_icon(icons.get(c.icon)), strip_font_size=20)
         if c.constellation > 0:
             bx, by = tx + TILE - 34, ty + 6
-            d.rounded_rectangle((bx, by, bx + 28, by + 24), radius=8, fill=(20, 20, 44, 215))
-            d.text((bx + 14, by + 12), f"C{c.constellation}", font=font("semibold", 16), fill=GOLD if c.constellation >= 6 else TEXT, anchor="mm")
+            d.rounded_rectangle((bx, by, bx + 28, by + 24), radius=8, fill=C.BADGE)
+            d.text((bx + 14, by + 12), f"C{c.constellation}", font=font("semibold", 16), fill=C.GOLD if c.constellation >= 6 else C.TEXT, anchor="mm")
     y += grid_h + 24
 
     label = {"live": "Live data", "cached": "Cached data", "stale": "Stale data (HoYoLAB unreachable)"}.get(source, "Data")
     stamp = fetched_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    d.text((PAD, y + 20), f"{label}  ·  fetched {stamp}", font=font("medium", 22), fill=GOLD if source == "live" else (240, 170, 110))
-    d.text((PAD, y + 58), f"Unofficial community tool, not affiliated with HoYoverse  ·  {REPORT_VERSION}", font=font("regular", 20), fill=MUTED)
+    d.text((PAD, y + 20), f"{label}  ·  fetched {stamp}", font=font("medium", 22), fill=C.GOLD if source == "live" else C.WARN)
+    d.text((PAD, y + 58), f"Unofficial community tool, not affiliated with HoYoverse  ·  {REPORT_VERSION}", font=font("regular", 20), fill=C.MUTED)
     return to_png(img)

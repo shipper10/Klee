@@ -5,22 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.abyss import AbyssData, Char, Chamber, Floor
-from app.ui_kit import (
-    GOLD,
-    GOLD_DARK,
-    MUTED,
-    PANEL,
-    TEXT,
-    character_tile,
-    draw_star,
-    draw_stars,
-    fit_text,
-    font,
-    load_icon,
-    new_canvas,
-    panel,
-    to_png,
-)
+from app.ui_kit import C, character_tile, draw_star, draw_stars, fit_text, font, load_icon, new_canvas, panel, themed, to_png
 
 REPORT_VERSION = "abyss-v2"
 W = 1080
@@ -72,6 +57,7 @@ def _summary_height(data: AbyssData) -> int:
     return h
 
 
+@themed
 def render_abyss_card(
     data: AbyssData,
     *,
@@ -92,40 +78,40 @@ def render_abyss_card(
     img, d = new_canvas(W, height)
 
     # --- header
-    d.text((PAD, 52), f"Dear {fit_text(d, nickname or 'Traveler', font('semibold', 46), INNER - 150)}", font=font("semibold", 46), fill=TEXT)
-    d.text((PAD, 116), "Review your Spiral Abyss challenge records~", font=font("regular", 28), fill=MUTED)
+    d.text((PAD, 52), f"Dear {fit_text(d, nickname or 'Traveler', font('semibold', 46), INNER - 150)}", font=font("semibold", 46), fill=C.TEXT)
+    d.text((PAD, 116), "Review your Spiral Abyss challenge records~", font=font("regular", 28), fill=C.MUTED)
     period = f"Period: {_fmt_period(data.period_start, data.period_end, tz_hours)}"
     pw = int(d.textlength(period, font=font("semibold", 24))) + 40
-    d.rounded_rectangle((PAD, 162, PAD + pw, 206), radius=22, fill=GOLD)
-    d.text((PAD + pw / 2, 184), period, font=font("semibold", 24), fill=GOLD_DARK, anchor="mm")
+    d.rounded_rectangle((PAD, 162, PAD + pw, 206), radius=22, fill=C.GOLD)
+    d.text((PAD + pw / 2, 184), period, font=font("semibold", 24), fill=C.GOLD_DARK, anchor="mm")
     y = header_h
 
     # --- summary
     if full_summary:
         panel(d, (PAD, y, W - PAD, y + summary_h), radius=26)
-        d.text((PAD + 30, y + 36), "Challenge Summary", font=font("semibold", 32), fill=TEXT)
+        d.text((PAD + 30, y + 36), "Challenge Summary", font=font("semibold", 32), fill=C.TEXT)
         sy = y + 92
-        d.rounded_rectangle((PAD + 30, sy, W - PAD - 30, sy + 150), radius=16, fill=(255, 255, 255, 26))
+        d.rounded_rectangle((PAD + 30, sy, W - PAD - 30, sy + 150), radius=16, fill=C.tint(26))
         cx = W // 2
-        draw_star(d, cx - 70, sy + 46, 24, GOLD)
-        d.text((cx - 36, sy + 46), f"{data.total_stars}", font=font("bold", 62), fill=TEXT, anchor="lm")
-        d.text((cx, sy + 104), f"Deepest Descent: {data.max_floor}    ·    Battles Fought: {data.total_battles}", font=font("regular", 24), fill=MUTED, anchor="mm")
+        draw_star(d, cx - 70, sy + 46, 24, C.GOLD)
+        d.text((cx - 36, sy + 46), f"{data.total_stars}", font=font("bold", 62), fill=C.TEXT, anchor="lm")
+        d.text((cx, sy + 104), f"Deepest Descent: {data.max_floor}    ·    Battles Fought: {data.total_battles}", font=font("regular", 24), fill=C.MUTED, anchor="mm")
         cy = sy + 150 + 30
         if data.most_played:
-            d.text((PAD + 30, cy), "Most Played Characters", font=font("serif", 28), fill=GOLD)
+            d.text((PAD + 30, cy), "Most Played Characters", font=font("serif", 28), fill=C.GOLD)
             cy += 52
             for i, c in enumerate(data.most_played[:4]):
                 tx = PAD + 30 + i * (110 + 22)
                 th = character_tile(img, d, tx, cy, 110, rarity=c.rarity, level=str(c.value), icon=load_icon(icons.get(c.icon)))
             cy += th + 30
-        d.text((PAD + 30, cy), "Notable Stats", font=font("serif", 28), fill=GOLD)
+        d.text((PAD + 30, cy), "Notable Stats", font=font("serif", 28), fill=C.GOLD)
         cy += 50
         if not data.stats:
-            d.text((PAD + 30, cy + 10), "No battle records yet", font=font("regular", 26), fill=MUTED)
+            d.text((PAD + 30, cy + 10), "No battle records yet", font=font("regular", 26), fill=C.MUTED)
         for s in data.stats:
-            d.rounded_rectangle((PAD + 30, cy, W - PAD - 30, cy + 46), radius=12, fill=(255, 255, 255, 18))
-            d.text((PAD + 52, cy + 23), STAT_LABELS.get(s.key, s.key), font=font("regular", 26), fill=TEXT, anchor="lm")
-            d.text((W - PAD - 52, cy + 23), f"{s.value:,}".replace(",", ""), font=font("bold", 28), fill=TEXT, anchor="rm")
+            d.rounded_rectangle((PAD + 30, cy, W - PAD - 30, cy + 46), radius=12, fill=C.tint(18))
+            d.text((PAD + 52, cy + 23), STAT_LABELS.get(s.key, s.key), font=font("regular", 26), fill=C.TEXT, anchor="lm")
+            d.text((W - PAD - 52, cy + 23), f"{s.value:,}".replace(",", ""), font=font("bold", 28), fill=C.TEXT, anchor="rm")
             cy += 54
         y += summary_h + 24
 
@@ -133,21 +119,21 @@ def render_abyss_card(
     for f in floors:
         block_h = FLOOR_HEADER_H + len(f.chambers) * CHAMBER_H
         panel(d, (PAD, y, W - PAD, y + block_h), radius=26)
-        d.ellipse((PAD + 28, y + 26, PAD + 28 + 64, y + 26 + 64), fill=(239, 230, 211))
-        d.text((PAD + 60, y + 58), str(f.number), font=font("bold", 34), fill=GOLD_DARK, anchor="mm")
-        d.text((PAD + 114, y + 58), f"Spiral Abyss Floor {f.number}", font=font("semibold", 36), fill=TEXT, anchor="lm")
-        draw_star(d, W - PAD - 150, y + 58, 22, GOLD)
-        d.text((W - PAD - 40, y + 58), f"{f.stars}/{f.max_stars}", font=font("bold", 34), fill=TEXT, anchor="rm")
+        d.ellipse((PAD + 28, y + 26, PAD + 28 + 64, y + 26 + 64), fill=C.STRIP)
+        d.text((PAD + 60, y + 58), str(f.number), font=font("bold", 34), fill=C.GOLD_DARK, anchor="mm")
+        d.text((PAD + 114, y + 58), f"Spiral Abyss Floor {f.number}", font=font("semibold", 36), fill=C.TEXT, anchor="lm")
+        draw_star(d, W - PAD - 150, y + 58, 22, C.GOLD)
+        d.text((W - PAD - 40, y + 58), f"{f.stars}/{f.max_stars}", font=font("bold", 34), fill=C.TEXT, anchor="rm")
         cy = y + FLOOR_HEADER_H
         for ch in f.chambers:
-            d.line((PAD + 28, cy, W - PAD - 28, cy), fill=(255, 255, 255, 34), width=2)
-            d.text((PAD + 30, cy + 22), f"Chamber {ch.number}", font=font("serif", 30), fill=GOLD)
-            d.text((PAD + 30, cy + 58), _fmt_time(ch.timestamp, tz_hours), font=font("regular", 20), fill=MUTED)
+            d.line((PAD + 28, cy, W - PAD - 28, cy), fill=C.tint(34), width=2)
+            d.text((PAD + 30, cy + 22), f"Chamber {ch.number}", font=font("serif", 30), fill=C.GOLD)
+            d.text((PAD + 30, cy + 58), _fmt_time(ch.timestamp, tz_hours), font=font("regular", 20), fill=C.MUTED)
             draw_stars(d, W - PAD - 30, cy + 40, ch.stars, 3)
             ry = cy + 92
             for half_i, (label, chars) in enumerate((("First Half", ch.first_half), ("Second Half", ch.second_half))):
                 hx = PAD + 30 + half_i * (HALF_W + HALF_GAP)
-                d.text((hx, ry), label, font=font("serif", 24), fill=TEXT)
+                d.text((hx, ry), label, font=font("serif", 24), fill=C.TEXT)
                 for i, c in enumerate(chars[:4]):
                     character_tile(
                         img, d, hx + i * (TILE + TILE_GAP), ry + 38, TILE,
@@ -159,6 +145,6 @@ def render_abyss_card(
     # --- footer
     label = {"live": "Live data", "cached": "Cached data", "stale": "Stale data (HoYoLAB unreachable)"}.get(source, "Data")
     stamp = fetched_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    d.text((PAD, y + 20), f"{label}  ·  fetched {stamp}", font=font("medium", 22), fill=GOLD if source == "live" else (240, 170, 110))
-    d.text((PAD, y + 58), f"Unofficial community tool, not affiliated with HoYoverse  ·  {REPORT_VERSION}", font=font("regular", 20), fill=MUTED)
+    d.text((PAD, y + 20), f"{label}  ·  fetched {stamp}", font=font("medium", 22), fill=C.GOLD if source == "live" else C.WARN)
+    d.text((PAD, y + 58), f"Unofficial community tool, not affiliated with HoYoverse  ·  {REPORT_VERSION}", font=font("regular", 20), fill=C.MUTED)
     return to_png(img)

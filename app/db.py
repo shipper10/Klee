@@ -116,6 +116,23 @@ class Database:
             {"chat_id": chat_id, "reports_enabled": enabled, "updated_by": updated_by, "updated_at": _iso(utcnow())}
         ).execute()
 
+    async def get_style_prefs(self, user_id: int) -> list[dict[str, Any]]:
+        """Rows for this user plus the owner's defaults (user_id 0). A missing table means no preferences."""
+        try:
+            res = await self._c.table("style_prefs").select("user_id,service,style").in_("user_id", [0, user_id]).execute()
+        except Exception:
+            return []
+        return list(res.data)
+
+    async def set_style_pref(self, user_id: int, service: str, style: str | None) -> None:
+        """Save a choice, or clear it when style is None."""
+        if style is None:
+            await self._c.table("style_prefs").delete().eq("user_id", user_id).eq("service", service).execute()
+            return
+        await self._c.table("style_prefs").upsert(
+            {"user_id": user_id, "service": service, "style": style, "updated_at": _iso(utcnow())}
+        ).execute()
+
     async def get_account_for_user(self, account_id: str, telegram_user_id: int) -> dict[str, Any] | None:
         res = (
             await self._c.table("game_accounts")
