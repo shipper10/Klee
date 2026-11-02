@@ -56,7 +56,10 @@ def test_from_raw_is_lenient():
     for payload in ({}, {"data": []}, {"is_unlock": True, "data": [{}]}, {"data": [{"detail": {"rounds_data": [{}]}}]}):
         d = TheaterData.from_raw(payload)
         assert TheaterData.from_json(d.to_json()) == d
-    assert not TheaterData.from_raw({"is_unlock": True, "data": [{"has_data": True}]}).has_data
+    # a season with a summary but no act details (HoYoLAB sends has_detail_data=False for the newest one) still counts
+    summary_only = TheaterData.from_raw({"is_unlock": True, "data": [{"has_data": True, "stat": {"max_round_id": 9, "coin_num": 1400}}]})
+    assert summary_only.has_data and not summary_only.acts and summary_only.best_act == 9 and summary_only.fantasia_flowers == 1400
+    assert not TheaterData.from_raw({"is_unlock": True, "data": [{"has_data": False}]}).has_data
 
 
 def test_render_sizes_and_defaults():

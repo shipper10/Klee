@@ -682,7 +682,7 @@ async def _send_theater(
         if not result.data.unlocked:
             raise NoRecords("Imaginarium Theater is not unlocked on this account yet.")
         acts = select_acts(result.data, show_all)
-        if not result.data.has_data or not acts:
+        if not result.data.has_data:
             raise NoRecords(
                 "No Imaginarium Theater records for the " + ("previous" if previous else "current")
                 + " season." + ("" if previous else " Try /theater previous.")
@@ -708,7 +708,8 @@ async def _send_theater(
         await context.bot.send_message(chat_id, "Something went wrong. Please try again later.")
         return
 
-    await context.bot.send_photo(chat_id, photo=io.BytesIO(png), caption=f"Imaginarium Theater ({'Previous' if previous else 'Current'} season) · {SOURCE_CAPTIONS[result.source]}")
+    await context.bot.send_photo(chat_id, photo=io.BytesIO(png), caption=f"Imaginarium Theater ({'Previous' if previous else 'Current'} season) · {SOURCE_CAPTIONS[result.source]}"
+        + ("" if acts else "\nAct-by-act details are not provided by HoYoLAB for this season yet; showing the summary only."))
     if fetched.failed:
         await context.bot.send_message(
             chat_id,

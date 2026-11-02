@@ -8,7 +8,7 @@ from typing import Any
 
 from app.abyss import icon_candidates
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DIFFICULTIES = {1: "Easy", 2: "Normal", 3: "Hard", 4: "Visionary", 5: "Arcana Challenge"}
 CHAR_TYPES = {2: "Trial", 3: "Support"}  # 1 = the player's own character
 
@@ -148,7 +148,7 @@ class TheaterData:
                 )
             )
         return cls(
-            unlocked=bool(raw.get("is_unlock")), has_data=bool(latest.get("has_data")) and bool(acts),
+            unlocked=bool(raw.get("is_unlock")), has_data=bool(latest.get("has_data")) or bool(acts),
             period_start=num(sched.get("start_time")), period_end=num(sched.get("end_time")),
             difficulty=num(stat.get("difficulty_id")), best_act=num(stat.get("max_round_id")),
             medals=num(stat.get("medal_num")), fantasia_flowers=num(stat.get("coin_num")),
@@ -182,6 +182,9 @@ def describe_raw(raw: Mapping[str, Any], now: int | None = None) -> str:
             f"#{i}: {ts(sc.get('start_time'))} -> {ts(sc.get('end_time'))} | has_data={e.get('has_data')} "
             f"has_detail={e.get('has_detail_data')} acts={len(det.get('rounds_data') or [])}"
         )
+        st = e.get("stat") or {}
+        lines.append("    stat: " + ", ".join(f"{k}={v}" for k, v in st.items() if isinstance(v, (int, float, bool))))
+        lines.append("    detail keys: " + ", ".join(sorted(det.keys())))
     for name, prev in (("current", False), ("previous", True)):
         picked = pick_season(entries, prev, now)
         sc = picked.get("schedule") or {}
