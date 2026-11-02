@@ -169,3 +169,20 @@ means enabled). Abuse limits: the asker's 10 s cooldown applies, plus one report
 The shared image shows nickname, masked UID, server and game data only; cookies are never reachable from a group.
 Requires `supabase/migrations/002_groups.sql` (adds the flag and the table); until it is applied, `/share` and
 `/groupreports` answer that the database update is pending and everything else keeps working.
+
+## Milestone 8: sign in with e-mail and password on the link page (2 Nov 2026)
+Researched before building (genshin.py 1.7.31 source, hoyo-buddy docs):
+- genshin.py's overseas web sign-in (`_os_web_login`, token_type 6) returns `ltuid_v2`, `ltoken_v2`, `ltmid_v2`
+  (+ cookie_token_v2, account ids). We keep only the first three: exactly what the pasted-cookie method stores, so the
+  link lasts as long as a pasted-cookie link. Hoyo-buddy's docs state such cookies last about one year and stop working
+  immediately when the HoYoverse password changes; we did not measure this ourselves.
+- It needs a HoYoverse e-mail and password. Accounts that sign in to the game with Google/Apple/Facebook/Steam/console
+  must first set a password in the HoYoverse account center (hoyo-buddy's pre-setup guide). The cookie method stays.
+- Captcha: HoYoverse may answer with a Geetest v3 challenge. Flow: form (no scripts, strict CSP) -> server asks HoYoverse
+  -> if captcha: sign-in is parked in memory (single use, 5 min, bound to that link and user) and the browser is sent to
+  a captcha page that contains no secret and holds no session id; the solved answer is posted back and the server
+  finishes the sign-in. Only the captcha page may load third-party scripts (Geetest).
+- Password handling: never logged, stored or echoed; wiped from the parked object after use; sent to HoYoverse only
+  through genshin.py (RSA-encrypted as the library does). Link attempts are counted (5 max) as before.
+- stoken is deliberately not stored (it is a stronger credential than the cookies we need).
+Not yet tested against the real HoYoverse service: the sandbox cannot reach it. Tests use a stubbed genshin.py.

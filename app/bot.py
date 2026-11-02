@@ -83,7 +83,9 @@ PRIVACY_TEXT = (
     "What this bot stores:\n"
     "• Your Telegram user ID.\n"
     "• For each linked game account: UID, server, nickname.\n"
-    "• The HoYoLAB session cookies you provide, encrypted (AES-256-GCM). I never ask for your password.\n"
+    "• The HoYoLAB session cookies you provide (or get by signing in on the link page), encrypted (AES-256-GCM).\n"
+    "• Your HoYoverse password is never stored or logged. If you sign in with it, it is sent to HoYoverse only to get "
+    "those cookies and, if a captcha is needed, waits in memory for a few minutes at most.\n"
     "• Short-lived cached report data (Daily Notes: a few minutes).\n"
     "• Whether you allowed group sharing (/share, off by default) and each group's on/off setting.\n"
     "• A minimal audit log (what happened, when, no secrets).\n\n"
@@ -290,7 +292,8 @@ async def link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
         "Open this one-time link to connect your account (valid for "
         f"{minutes} minutes):\n\n{deps.public_base_url}/link/{token}\n\n"
-        "I will never ask for your password, and you should not paste cookies into this chat. "
+        "On that page you can sign in with your HoYoverse e-mail and password, or paste cookies. "
+        "Never send a password or cookies in this chat: only on that page. "
         "Using a spare HoYoLAB account is the safest option.",
         link_preview_options=LinkPreviewOptions(is_disabled=True),
         protect_content=True,

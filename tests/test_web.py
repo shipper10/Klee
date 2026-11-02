@@ -41,7 +41,10 @@ async def test_form_served_with_security_headers(env):
     assert r.status == 200
     assert r.headers["Cache-Control"] == "no-store" and r.headers["Referrer-Policy"] == "no-referrer"
     assert "Content-Security-Policy" in r.headers
-    assert "password" not in (await r.text()).lower().replace("never ask for your password", "")
+    text = await r.text()
+    csp = r.headers["Content-Security-Policy"]
+    assert "script-src" not in csp and "default-src 'none'" in csp  # pages that take secrets run no scripts
+    assert 'type="password"' in text and "<script" not in text
 
 
 async def test_unknown_and_malformed_tokens_are_410(env):
