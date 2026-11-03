@@ -312,17 +312,8 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await message.reply_text(exc.user_message)
         except Exception as exc:
             await message.reply_text(f"Failed: {type(exc).__name__}")
-    elif what == "icons":
-        from app.stygian import ELEMENTS, element_icon_candidates
-
-        lines = []
-        for el in ELEMENTS[:2]:
-            for url in element_icon_candidates(el):
-                got = await deps.images.fetch_first([(url, [url])])
-                lines.append(("OK   " if url in got.images else "FAIL ") + url.split("//")[1])
-        await message.reply_text("\n".join(lines))
     else:
-        await message.reply_text("Usage: /debug timing | /debug theater | /debug stygian | /debug icons")
+        await message.reply_text("Usage: /debug timing | /debug theater | /debug stygian")
 
 
 async def updateicons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

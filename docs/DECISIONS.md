@@ -206,3 +206,6 @@ Not yet tested against the real HoYoverse service: the sandbox cannot reach it. 
 ## Milestone 12: Stygian in the official Battle Chronicle look
 - New layout style `official` (`render_stygian_official.py`), the built-in default for `/stygian` (`styles.DEFAULT_STYLE`); owner/user choices still override it. Drawn from the official share card: purple glass panels, Best Record bar, tall team tiles (HoYoLAB card art first, Enka fallbacks), boss art from the payload (`monster.icon`) with level pill, and the Strongest Single Strike / Highest Total Damage Dealt rows. No HoYoverse logo or QR code.
 - `/debug stygian` (owner) lists the payload's key names to check field assumptions.
+
+## Element icons
+Official in-game element icons (UI_Icon_Element_*) are bundled in `app/assets/elements/` (source: helingping/gsgametextures, game art © HoYoverse). No network needed; drawn glyphs remain only as a fallback. The wider asset-library plan (manifest, Supabase storage, asset manager) is a later phase.

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
 
+from app.elements import element_icon
 from app.regions import mask_uid
 from app.stygian import SChallenge, SChar, StygianData
 from app.ui_kit import fit_text, font, load_icon
@@ -148,7 +149,7 @@ def _glyph(img: Image.Image, cx: int, cy: int, size: int, element: str) -> None:
     img.paste(layer, (cx - size // 2, cy - size // 2), layer)
 
 
-def _tile(img: Image.Image, d: ImageDraw.ImageDraw, x: int, y: int, c: SChar, icon: Image.Image | None, sprite: bytes | None = None) -> None:
+def _tile(img: Image.Image, d: ImageDraw.ImageDraw, x: int, y: int, c: SChar, icon: Image.Image | None) -> None:
     top, bottom = RARITY_BG.get(c.rarity, ((112, 118, 140), (76, 80, 100)))
     ramp = Image.linear_gradient("L").resize((TILE_W, TILE_H))
     tile = Image.composite(Image.new("RGB", (TILE_W, TILE_H), bottom), Image.new("RGB", (TILE_W, TILE_H), top), ramp).convert("RGBA")
@@ -171,13 +172,13 @@ def _tile(img: Image.Image, d: ImageDraw.ImageDraw, x: int, y: int, c: SChar, ic
     mask = Image.new("L", (TILE_W, TILE_H), 0)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, TILE_W - 1, TILE_H - 1), radius=8, fill=255)
     img.paste(tile.convert("RGB"), (x, y), mask)
-    if sprite:
-        try:
-            ic = Image.open(io.BytesIO(sprite)).convert("RGBA").resize((40, 40), Image.LANCZOS)
-            img.paste(ic, (x + 2, y + 2), ic)
-            return
-        except Exception:
-            pass
+    ic = element_icon(c.element, 44)
+    if ic is not None:
+        shadow = Image.new("RGBA", ic.size, (0, 0, 0, 0))
+        shadow.putalpha(ic.getchannel("A").filter(ImageFilter.GaussianBlur(3)).point(lambda v: min(255, v * 2)))
+        img.paste(shadow, (x + 1, y + 2), shadow)
+        img.paste(ic, (x + 1, y + 1), ic)
+        return
     _glyph(img, x + 20, y + 20, 36, c.element)
 
 
@@ -275,7 +276,7 @@ def render_stygian_official(
         d.text((round(57 * S) + bw - 18, bar_top + round(20 * S)), _clock(ch.seconds), font=font("bold", 32), fill=TEXT, anchor="rm")
         # team
         for i, c in enumerate(ch.team[:4]):
-            _tile(img, d, round(62 * S) + i * (TILE_W + TILE_GAP), tiles_top, c, load_icon(icons.get(c.icon)), icons.get(f"el:{c.element}"))
+            _tile(img, d, round(62 * S) + i * (TILE_W + TILE_GAP), tiles_top, c, load_icon(icons.get(c.icon)))
         # best rows
         ry = tiles_bottom + round(20 * S)
         rh = round(52 * S)
