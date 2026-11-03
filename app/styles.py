@@ -27,9 +27,10 @@ SERVICES: dict[str, str] = {
 # Layout styles: a style with its own drawing code (not just colours), available only for the listed services.
 LAYOUTS: dict[str, tuple[str, str]] = {
     "official": ("Official look", "Purple Battle Chronicle style, close to the HoYoLAB share card."),
+    "build": ("Build Card", "Game-style build card: full art, stat icons, artifact rolls, element-themed background."),
     "showcase": ("Showcase", "Large splash art, glass panels and element colours, in the spirit of Enka cards."),
 }
-LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["showcase"], "profile": ["showcase"], "stygian": ["official"]}
+LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["build", "showcase"], "profile": ["showcase"], "stygian": ["official"]}
 SERVICE_STYLES: dict[str, list[str]] = {svc: list(THEMES) + LAYOUT_SERVICES.get(svc, []) for svc in SERVICES}
 
 

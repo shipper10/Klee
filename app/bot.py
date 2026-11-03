@@ -27,14 +27,17 @@ from app.genshin_provider import GenshinProvider
 from app.images import ImageFetcher
 from app.linking import TOKEN_TTL, hash_token, new_token, utcnow
 from app.regions import mask_uid, server_label, server_utc_offset
+from app.styles import label as style_label
 from app.styles import resolve as resolve_style
 from app.styles import SERVICE_STYLES, known as styles_known
 from app import reminders, settings_menu, timing
 from app.stygian import describe_raw as describe_stygian_raw
 from app.theater import describe_raw as describe_theater_raw
-from app.character import splash_for
+from app.character import describe_raw as describe_character_raw, splash_for
 from app.render_stygian_official import render_stygian_official
 from app.render_showcase import render_character_showcase
+from app.build_card.template import render_character_build
+from app.asset_manager import plan_character_art
 from app.render_showcase_profile import render_profile_showcase, splash_key
 from app.render_diary import render_diary_card
 from app.render_abyss import render_abyss_card, select_floors
@@ -82,7 +85,7 @@ HELP_TEXT = (
     "/diary – primogems and mora income this month (option: previous)\n"
     "/profile – account overview with your top characters\n"
     "/characters – all your characters\n"
-    "/character <name> – weapon, artifacts, talents and stats of one character\n"
+    "/character <name> – weapon, artifacts, talents and stats of one character (add: compare, to see every style)\n"
     "/settings – image style (look of the reports) and group sharing, with buttons\n"
     "/share on|off – let group members view your reports (reply to your message with a command)\n"
     "/groupreports on|off – group admins: enable or disable the bot in a group\n"
@@ -300,6 +303,24 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await message.reply_text(exc.user_message)
         except Exception as exc:
             await message.reply_text(f"Failed: {type(exc).__name__}")
+    elif what == "character":
+        rows = await deps.db.list_accounts(update.effective_user.id)
+        query = " ".join(context.args[1:])
+        if not rows or not query:
+            await message.reply_text("Usage: /debug character <name> (needs a linked account)")
+            return
+        try:
+            account = _pick_default(rows)
+            matches = find_characters((await deps.provider.get_profile(account)).data, query)
+            if not matches:
+                await message.reply_text("No such character on this account.")
+                return
+            raw = await deps.provider.get_character_raw(account, matches[0].id)
+            await message.reply_text(describe_character_raw(raw, matches[0].id))
+        except BotError as exc:
+            await message.reply_text(exc.user_message)
+        except Exception as exc:
+            await message.reply_text(f"Failed: {type(exc).__name__}")
     elif what == "theater":
         rows = await deps.db.list_accounts(update.effective_user.id)
         if not rows:
@@ -313,7 +334,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as exc:
             await message.reply_text(f"Failed: {type(exc).__name__}")
     else:
-        await message.reply_text("Usage: /debug timing | /debug theater | /debug stygian")
+        await message.reply_text("Usage: /debug timing | /debug theater | /debug stygian | /debug character <name>")
 
 
 async def updateicons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -854,6 +875,10 @@ async def _send_character(
     context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], query: str
 ) -> None:
     deps = _deps(context)
+    words = query.split()
+    compare = bool(words) and words[-1].lower() == "compare"
+    if compare:
+        query = " ".join(words[:-1])
     try:
         profile_report = await deps.provider.get_profile(account)  # cached; gives names and ids
         matches = find_characters(profile_report.data, query)
@@ -868,20 +893,23 @@ async def _send_character(
         _check_cooldown(deps, user_id)
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         result = await deps.provider.get_character(account, matches[0].id)
-        style = await resolve_style(deps.db, user_id, "character")
-        wanted = result.data.icon_candidates() + (result.data.splash_candidates() if style == "showcase" else [])
+        chosen = await resolve_style(deps.db, user_id, "character")
+        styles = ["classic", "showcase", "build"] if compare else [chosen]
+        wanted = result.data.icon_candidates()
+        if "showcase" in styles:
+            wanted += result.data.splash_candidates()
+        if "build" in styles:
+            wanted += result.data.extra_icon_candidates() + plan_character_art(result.data)
         fetched = await _icons(deps, wanted)
-        png = await _timed_render(
-            render_character_showcase if style == "showcase" else render_character_card,
-            result.data,
-            nickname=account.get("nickname") or "Traveler",
-            uid=str(account["game_uid"]),
-            server=account["region"],
-            icons=fetched.images,
-            fetched_at=result.fetched_at,
-            source=result.source,
-            style=style,
+        common = dict(
+            nickname=account.get("nickname") or "Traveler", uid=str(account["game_uid"]), server=account["region"],
+            icons=fetched.images, fetched_at=result.fetched_at, source=result.source,
         )
+        renderers = {"showcase": render_character_showcase, "build": render_character_build}
+        pngs = [
+            await _timed_render(renderers.get(st, render_character_card), result.data, **common, style=st)
+            for st in styles
+        ]
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
         return
@@ -890,7 +918,9 @@ async def _send_character(
         await context.bot.send_message(chat_id, "Something went wrong. Please try again later.")
         return
 
-    await context.bot.send_photo(chat_id, photo=io.BytesIO(png), caption=f"{result.data.name} · {SOURCE_CAPTIONS[result.source]}")
+    for st, png in zip(styles, pngs):
+        tag = f" [{style_label(st)}]" if compare else ""
+        await context.bot.send_photo(chat_id, photo=io.BytesIO(png), caption=f"{result.data.name}{tag} · {SOURCE_CAPTIONS[result.source]}")
     if fetched.failed:
         await context.bot.send_message(
             chat_id,

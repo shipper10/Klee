@@ -209,3 +209,10 @@ Not yet tested against the real HoYoverse service: the sandbox cannot reach it. 
 
 ## Element icons
 Official in-game element icons (UI_Icon_Element_*) are bundled in `app/assets/elements/` (source: helingping/gsgametextures, game art © HoYoverse). No network needed; drawn glyphs remain only as a fallback. The wider asset-library plan (manifest, Supabase storage, asset manager) is a later phase.
+
+## Milestone 13: Character Build Card (independent template)
+- New packages: `app/asset_manager.py` (logical keys, bundled + fetched sources, validation, fallbacks, `Assets.missing`), `app/build_card/` (`model.py` view model, `theme.py` per-element palettes, `layers.py` procedural layers, `template.py` drawing). Registered as layout style `build` for the `character` service; Showcase and the colour styles are untouched.
+- Art tiers: full artwork (HoYoLAB `image`), splash (enka/yatta `UI_Gacha_AvatarImg_*`), portrait icon; each tier is validated by size/aspect and the first valid one is used.
+- Data rules: only fields HoYoLAB sends are drawn (`times` -> roll ticks, `base`/`add` -> small numbers). Missing -> not drawn. Weapon max level only when `promote_level` is sent. Own-element DMG bonus chosen by name match only.
+- `/character <name> compare` renders classic, showcase and build from the same data. Owner `/debug character <name>` prints which fields the real payload contains.
+- Credits: yuanshen.ttf, stat icons, lock icon, star rows from GenshinUID (GPL-3.0); element icons from helingping/gsgametextures; all game art (c) HoYoverse.

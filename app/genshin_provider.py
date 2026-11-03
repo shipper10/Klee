@@ -135,6 +135,15 @@ class GenshinProvider:
 
         return await self._call(account, call)
 
+    async def get_character_raw(self, account: Mapping[str, Any], char_id: int) -> Any:
+        """Uncached raw payload, for the owner's /debug check."""
+        uid = int(account["game_uid"])
+
+        async def call(client: genshin.Client) -> Any:
+            return await client.get_genshin_detailed_characters(uid, characters=[char_id], return_raw_data=True)
+
+        return await self._call(account, call)
+
     async def get_theater_raw(self, account: Mapping[str, Any]) -> Any:
         """Uncached raw payload, for the owner's /debug check."""
         uid = int(account["game_uid"])
