@@ -31,7 +31,9 @@ from app.styles import resolve as resolve_style
 from app.styles import SERVICE_STYLES, known as styles_known
 from app import reminders, settings_menu, timing
 from app.theater import describe_raw as describe_theater_raw
+from app.character import splash_for
 from app.render_showcase import render_character_showcase
+from app.render_showcase_profile import render_profile_showcase, splash_key
 from app.render_diary import render_diary_card
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
@@ -636,12 +638,13 @@ async def _send_profile(
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         result = await deps.provider.get_profile(account)
         chars = select_characters(result.data, show_all)
-        fetched = await _icons(deps, 
-            [(c.icon, c.candidates) for c in chars if c.icon]
-        )
         style = await resolve_style(deps.db, user_id, "profile")
+        wanted = [(c.icon, c.candidates) for c in chars if c.icon]
+        if style == "showcase" and chars:
+            wanted += splash_for(chars[0].candidates, splash_key(chars[0]))
+        fetched = await _icons(deps, wanted)
         png = await _timed_render(
-            render_profile_card,
+            render_profile_showcase if style == "showcase" else render_profile_card,
             result.data,
             nickname=account.get("nickname") or result.data.nickname or "Traveler",
             uid=str(account["game_uid"]),

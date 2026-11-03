@@ -28,7 +28,7 @@ SERVICES: dict[str, str] = {
 LAYOUTS: dict[str, tuple[str, str]] = {
     "showcase": ("Showcase", "Large splash art, glass panels and element colours, in the spirit of Enka cards."),
 }
-LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["showcase"]}
+LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["showcase"], "profile": ["showcase"]}
 SERVICE_STYLES: dict[str, list[str]] = {svc: list(THEMES) + LAYOUT_SERVICES.get(svc, []) for svc in SERVICES}
 
 

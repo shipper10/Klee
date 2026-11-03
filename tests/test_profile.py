@@ -112,3 +112,29 @@ async def test_send_profile_error_is_friendly():
     c = ctx(Boom())
     await bot._send_profile(c, 1, 303, ACCOUNT, show_all=False)
     assert "secret" not in c.bot.messages[0][1] and not c.bot.photos
+
+
+def test_showcase_profile_renders_in_both_modes_and_without_art():
+    from app.render_showcase_profile import render_profile_showcase, splash_key
+
+    data = sample(30)
+    chars_sorted = data.sorted_characters()
+    for c in chars_sorted:
+        c.id = 10000000 + int(c.name[4:])
+        c.element = "Hydro"
+        c.candidates = [f"https://enka.network/ui/UI_AvatarIcon_{c.name}.png"]
+    imgs = {c.icon: _icon(c.icon) for c in chars_sorted}
+    top = chars_sorted[0]
+    buf = io.BytesIO()
+    Image.new("RGB", (2048, 1024), (60, 90, 150)).save(buf, "PNG")
+    for with_splash in (True, False):
+        for show_all in (False, True):
+            ic = dict(imgs)
+            if with_splash:
+                ic[splash_key(top)] = buf.getvalue()
+            chars = chars_sorted if show_all else chars_sorted[:16]
+            png = render_profile_showcase(data, nickname="x", uid="700000001", server="os_euro", icons=ic, characters=chars,
+                                          fetched_at=NOW, source="live", summary=not show_all)
+            Image.open(io.BytesIO(png)).verify()
+    Image.open(io.BytesIO(render_profile_showcase(ProfileData(), nickname="", uid="1", server="os_euro", icons={}, characters=[],
+                                                  fetched_at=NOW, source="cached"))).verify()

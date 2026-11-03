@@ -200,4 +200,5 @@ Not yet tested against the real HoYoverse service: the sandbox cannot reach it. 
 ## Milestone 11: design phase, first layout style ("Showcase")
 - Evaluated for reuse: hoyo-buddy (GPL-3.0; covers abyss/theater/stygian/notes/characters from genshin.py models, but imports discord, its own l10n/cache layers and needs the private `hoyo-buddy-assets` submodule, so it cannot run standalone), GenshinUID (GPL-3.0, needs the gsuid_core framework), enkacard 3.3.9 (no licence, character cards only, fetches its own data from Enka by UID, last push Oct 2024). None can be embedded without changing how data is fetched.
 - Chosen path: our own additional layouts that use the same normalized data. Styles are now either colour themes (all services) or layouts with their own drawing code (`styles.LAYOUTS`, `LAYOUT_SERVICES`). First layout: `showcase` for the character card (`render_showcase.py`): splash art from enka.network (then gi.yatta.moe), glass panels, element accent colour; falls back to the portrait over a blurred background when the splash cannot be downloaded.
-- Next layouts to add the same way: profile/characters, Abyss, Theater, Stygian, Notes, Diary.
+- Showcase now also covers profile/characters (`render_showcase_profile.py`, top character splash as the blurred header).
+- Next layouts to add the same way: Abyss, Theater, Stygian, Notes, Diary.

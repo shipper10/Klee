@@ -19,6 +19,21 @@ def _https(url: Any) -> list[str]:
     return ["https://" + u[len("http://"):] if u.startswith("http://") else u]
 
 
+def splash_for(candidates: list[str], key: str) -> list[tuple[str, list[str]]]:
+    """Full-body splash art download candidates (Enka, then yatta) derived from a portrait candidate list."""
+    import re
+
+    for url in candidates:
+        m = re.search(r"UI_AvatarIcon_([A-Za-z0-9_]+)\.png", url)
+        if m and not m.group(1).startswith("Side"):
+            name = m.group(1)
+            return [(key, [
+                f"https://enka.network/ui/UI_Gacha_AvatarImg_{name}.png",
+                f"https://gi.yatta.moe/assets/UI/UI_Gacha_AvatarImg_{name}.png",
+            ])]
+    return []
+
+
 @dataclass
 class Stat:
     name: str
@@ -85,17 +100,7 @@ class CharacterDetail:
 
     def splash_candidates(self) -> list[tuple[str, list[str]]]:
         """Full-body splash art (Enka, then yatta), derived from the portrait name. Empty if the name is unknown."""
-        import re
-
-        for url in self.candidates:
-            m = re.search(r"UI_AvatarIcon_([A-Za-z0-9_]+)\.png", url)
-            if m and not m.group(1).startswith("Side"):
-                name = m.group(1)
-                return [(self.splash_key, [
-                    f"https://enka.network/ui/UI_Gacha_AvatarImg_{name}.png",
-                    f"https://gi.yatta.moe/assets/UI/UI_Gacha_AvatarImg_{name}.png",
-                ])]
-        return []
+        return splash_for(self.candidates, self.splash_key)
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
