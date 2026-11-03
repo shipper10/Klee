@@ -8,7 +8,7 @@ from typing import Any
 
 from app.abyss import icon_candidates
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DIFFICULTIES = {1: "Easy", 2: "Normal", 3: "Hard", 4: "Visionary", 5: "Arcana Challenge"}
 CHAR_TYPES = {2: "Trial", 3: "Support"}  # 1 = the player's own character
 

@@ -10,7 +10,19 @@ from typing import Any
 
 from app.abyss import icon_candidates
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+ELEMENTS = ("Cryo", "Hydro", "Pyro", "Electro", "Anemo", "Dendro", "Geo")
+
+
+def element_icon_candidates(element: str) -> list[str]:
+    """Unverified-from-sandbox sprite locations, tried in order; the renderer falls back to a drawn glyph."""
+    return [
+        f"https://enka.network/ui/UI_Buff_Element_{element}.png",
+        f"https://enka.network/ui/UI_Icon_Element_{element}.png",
+        f"https://gi.yatta.moe/assets/UI/element/UI_Icon_Element_{element}.png",
+        f"https://gi.yatta.moe/assets/UI/UI_Buff_Element_{element}.png",
+    ]
 BEST_KINDS = {1: "Strongest Strike", 2: "Highest Damage"}
 _MARKUP = re.compile(r"<[^>]*>|\{[^}]*\}")
 
@@ -80,6 +92,8 @@ class StygianData:
             for ch in m.challenges:
                 if ch.enemy_icon:
                     found[ch.enemy_icon] = [ch.enemy_icon]
+        for el in sorted({c.element for c in chars if c.element in ELEMENTS}):
+            found[f"el:{el}"] = element_icon_candidates(el)
         return list(found.items())
 
     def to_json(self) -> dict[str, Any]:
