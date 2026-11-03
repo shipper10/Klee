@@ -111,10 +111,13 @@ class StygianData:
             sc = e.get("schedule") or {}
             return num(sc.get("start_time")), num(sc.get("end_time"))
 
+        # Like the official page: "current" is the newest season that has started (even in the short gap after it
+        # ended and before the next one exists), "previous" is the one before it.
         timed = sorted((e for e in entries if span(e)[0]), key=lambda e: -span(e)[0])
         if timed:
-            pool = [e for e in timed if (span(e)[1] < now if previous else span(e)[0] <= now <= span(e)[1])]
-            entry: Mapping[str, Any] = pool[0] if pool else {}
+            started = [e for e in timed if span(e)[0] <= now]
+            index = 1 if previous else 0
+            entry: Mapping[str, Any] = started[index] if len(started) > index else {}
         else:
             index = 1 if previous else 0
             entry = entries[index] if len(entries) > index else {}

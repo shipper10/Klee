@@ -113,9 +113,11 @@ def test_current_and_previous_seasons_are_picked_by_schedule():
     both = {"is_unlock": True, "data": [new["data"][0], old["data"][0]]}
     assert TheaterData.from_raw(both, now=3500).best_act == 8
     assert TheaterData.from_raw(both, previous=True, now=3500).best_act == 3
-    # current season not started playing yet: nothing current, previous still reachable
-    assert not TheaterData.from_raw(both, now=5000).has_data
-    assert TheaterData.from_raw(both, previous=True, now=5000).best_act == 8
+    # after the newest season ended (gap before the next one) the official page still shows it as current
+    assert TheaterData.from_raw(both, now=5000).best_act == 8
+    assert TheaterData.from_raw(both, previous=True, now=5000).best_act == 3
+    # a season that has not started yet is never current
+    assert TheaterData.from_raw(both, now=500).period_start == 0
     # no schedule info: fall back to list order
     for e in both["data"]:
         e.pop("schedule")

@@ -14,7 +14,7 @@ CHAR_TYPES = {2: "Trial", 3: "Support"}  # 1 = the player's own character
 
 
 def pick_season(entries: list[Mapping[str, Any]], previous: bool, now: int | None = None) -> Mapping[str, Any]:
-    """Current season = the one whose schedule contains `now`; previous = the latest one that already ended.
+    """Current season = the newest one that has started; previous = the one before it.
 
     Falls back to list order (newest first) if the schedules are missing or unreadable.
     """
@@ -31,12 +31,10 @@ def pick_season(entries: list[Mapping[str, Any]], previous: bool, now: int | Non
 
     timed = [e for e in entries if span(e)[0]]
     if timed:
-        ordered = sorted(timed, key=lambda e: -span(e)[0])
-        if previous:
-            ended = [e for e in ordered if span(e)[1] < now]
-            return ended[0] if ended else {}
-        current = [e for e in ordered if span(e)[0] <= now <= span(e)[1]]
-        return current[0] if current else {}
+        # Same rule as the official page: current = newest season that has started, previous = the one before it.
+        started = sorted((e for e in timed if span(e)[0] <= now), key=lambda e: -span(e)[0])
+        index = 1 if previous else 0
+        return started[index] if len(started) > index else {}
     index = 1 if previous else 0
     return entries[index] if len(entries) > index else {}
 

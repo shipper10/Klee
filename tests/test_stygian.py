@@ -55,8 +55,10 @@ def test_parse_current_and_previous():
     assert cur.single.best_difficulty == 5 and cur.single.best_seconds == 180
     prev = StygianData.from_raw(RAW, previous=True, now=TS)
     assert prev.season == "Season A" and not prev.multi.has_data
-    assert not StygianData.from_raw(RAW, now=9999).found  # between seasons: nothing current
-    assert StygianData.from_raw(RAW, previous=True, now=9999).season == "Season B"
+    # between seasons (the newest one already ended) the official page still shows it as current
+    assert StygianData.from_raw(RAW, now=9999).season == "Season B"
+    assert StygianData.from_raw(RAW, previous=True, now=9999).season == "Season A"
+    assert not StygianData.from_raw(RAW, now=500).found  # nothing has started yet
     assert StygianData.from_json(cur.to_json()) == cur
 
 
