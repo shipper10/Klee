@@ -24,7 +24,7 @@ def _clock(seconds: int) -> str:
 @themed
 def render_stygian_card(
     data: StygianData, *, nickname: str, icons: dict[str, bytes], multi: bool, tz_hours: int,
-    fetched_at: datetime, source: str,
+    fetched_at: datetime, source: str, uid: str = "",
 ) -> bytes:
     mode = data.mode(multi)
     challenges = mode.challenges

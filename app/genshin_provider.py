@@ -127,6 +127,14 @@ class GenshinProvider:
         key = "diary:previous" if previous else "diary:current"
         return await self._cached(account, key, DIARY_TTL, diary_mod.SCHEMA_VERSION, fetch, DiaryData.from_json)
 
+    async def get_stygian_raw(self, account: Mapping[str, Any]) -> Any:
+        uid = int(account["game_uid"])
+
+        async def call(client: genshin.Client) -> Any:
+            return await client.get_stygian_onslaught(uid, raw=True, need_detail=True)
+
+        return await self._call(account, call)
+
     async def get_theater_raw(self, account: Mapping[str, Any]) -> Any:
         """Uncached raw payload, for the owner's /debug check."""
         uid = int(account["game_uid"])

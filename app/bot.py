@@ -30,8 +30,10 @@ from app.regions import mask_uid, server_label, server_utc_offset
 from app.styles import resolve as resolve_style
 from app.styles import SERVICE_STYLES, known as styles_known
 from app import reminders, settings_menu, timing
+from app.stygian import describe_raw as describe_stygian_raw
 from app.theater import describe_raw as describe_theater_raw
 from app.character import splash_for
+from app.render_stygian_official import render_stygian_official
 from app.render_showcase import render_character_showcase
 from app.render_showcase_profile import render_profile_showcase, splash_key
 from app.render_diary import render_diary_card
@@ -286,6 +288,18 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     if what == "timing":
         await message.reply_text(timing.summary())
+    elif what == "stygian":
+        rows = await deps.db.list_accounts(update.effective_user.id)
+        if not rows:
+            await message.reply_text("Link an account first.")
+            return
+        try:
+            raw = await deps.provider.get_stygian_raw(_pick_default(rows))
+            await message.reply_text(describe_stygian_raw(raw))
+        except BotError as exc:
+            await message.reply_text(exc.user_message)
+        except Exception as exc:
+            await message.reply_text(f"Failed: {type(exc).__name__}")
     elif what == "theater":
         rows = await deps.db.list_accounts(update.effective_user.id)
         if not rows:
@@ -299,7 +313,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as exc:
             await message.reply_text(f"Failed: {type(exc).__name__}")
     else:
-        await message.reply_text("Usage: /debug timing | /debug theater")
+        await message.reply_text("Usage: /debug timing | /debug theater | /debug stygian")
 
 
 async def updateicons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -793,7 +807,7 @@ async def _send_stygian(
         fetched = await _icons(deps, result.data.icon_candidates(multi))
         style = await resolve_style(deps.db, user_id, "stygian")
         png = await _timed_render(
-            render_stygian_card,
+            render_stygian_official if style == "official" else render_stygian_card,
             result.data,
             nickname=account.get("nickname") or "Traveler",
             icons=fetched.images,
@@ -801,6 +815,7 @@ async def _send_stygian(
             tz_hours=server_utc_offset(account["region"]),
             fetched_at=result.fetched_at,
             source=result.source,
+            uid=str(account["game_uid"]),
             style=style,
         )
     except BotError as exc:

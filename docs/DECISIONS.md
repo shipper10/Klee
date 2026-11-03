@@ -202,3 +202,7 @@ Not yet tested against the real HoYoverse service: the sandbox cannot reach it. 
 - Chosen path: our own additional layouts that use the same normalized data. Styles are now either colour themes (all services) or layouts with their own drawing code (`styles.LAYOUTS`, `LAYOUT_SERVICES`). First layout: `showcase` for the character card (`render_showcase.py`): splash art from enka.network (then gi.yatta.moe), glass panels, element accent colour; falls back to the portrait over a blurred background when the splash cannot be downloaded.
 - Showcase now also covers profile/characters (`render_showcase_profile.py`, top character splash as the blurred header).
 - Next layouts to add the same way: Abyss, Theater, Stygian, Notes, Diary.
+
+## Milestone 12: Stygian in the official Battle Chronicle look
+- New layout style `official` (`render_stygian_official.py`), the built-in default for `/stygian` (`styles.DEFAULT_STYLE`); owner/user choices still override it. Drawn from the official share card: purple glass panels, Best Record bar, tall team tiles (HoYoLAB card art first, Enka fallbacks), boss art from the payload (`monster.icon`) with level pill, and the Strongest Single Strike / Highest Total Damage Dealt rows. No HoYoverse logo or QR code.
+- `/debug stygian` (owner) lists the payload's key names to check field assumptions.

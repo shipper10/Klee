@@ -115,3 +115,33 @@ async def test_send_stygian_flows():
     c3 = ctx(Prov(prev))
     await bot._send_stygian(c3, 1, 504, ACCOUNT, multi=True, previous=True)
     assert "co-op" in c3.bot.messages[0][1] and not c3.bot.photos
+
+
+def test_official_style_renders_and_is_the_default():
+    from app.render_stygian_official import render_stygian_official
+    from app.styles import pick
+
+    raw = [season(3000, 4000, "Season B", with_mp=True)]
+    for ch in raw[0]["single"]["challenge"] + raw[0]["mp"]["challenge"]:
+        ch["monster"]["icon"] = "https://act-webstatic.hoyoverse.com/boss.png"
+        ch["name"] = "A very long challenge name: Obliterator Panoply and Other Words"
+    data = StygianData.from_raw(raw, now=TS)
+    ch = data.single.challenges[0]
+    assert ch.enemy_icon.endswith("boss.png") and ch.team[0].element == "Cryo"
+    assert ch.team[0].candidates[0] == ch.team[0].icon  # HoYoLAB art first, Enka after
+    icons = {u: _icon(u) for u, _ in data.icon_candidates()}
+    assert "https://act-webstatic.hoyoverse.com/boss.png" in icons
+    for multi in (False, True):
+        png = render_stygian_official(data, nickname="x", icons=icons, multi=multi, tz_hours=8, fetched_at=NOW, source="live", uid="726339362")
+        Image.open(io.BytesIO(png)).verify()
+    # nothing downloaded: still renders
+    Image.open(io.BytesIO(render_stygian_official(data, nickname="x", icons={}, multi=False, tz_hours=8, fetched_at=NOW, source="cached"))).verify()
+    assert pick([], 5, "stygian") == "official" and pick([], 5, "abyss") == "classic"
+    assert pick([{"user_id": 5, "service": "stygian", "style": "aurora"}], 5, "stygian") == "aurora"
+
+
+def test_describe_raw_lists_keys_only():
+    from app.stygian import describe_raw
+
+    text = describe_raw(RAW)
+    assert "monster keys" in text and "best_avatar count=2" in text and "Big" not in text

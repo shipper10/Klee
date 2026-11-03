@@ -26,10 +26,15 @@ SERVICES: dict[str, str] = {
 }
 # Layout styles: a style with its own drawing code (not just colours), available only for the listed services.
 LAYOUTS: dict[str, tuple[str, str]] = {
+    "official": ("Official look", "Purple Battle Chronicle style, close to the HoYoLAB share card."),
     "showcase": ("Showcase", "Large splash art, glass panels and element colours, in the spirit of Enka cards."),
 }
-LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["showcase"], "profile": ["showcase"]}
+LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["showcase"], "profile": ["showcase"], "stygian": ["official"]}
 SERVICE_STYLES: dict[str, list[str]] = {svc: list(THEMES) + LAYOUT_SERVICES.get(svc, []) for svc in SERVICES}
+
+
+# Built-in default per service when nobody (user or owner) has chosen anything.
+DEFAULT_STYLE: dict[str, str] = {"stygian": "official"}
 
 
 def known(style: str) -> bool:
@@ -60,14 +65,14 @@ def pick(rows: list[dict[str, Any]], user_id: int, service: str) -> str:
         style = table.get(key)
         if style and is_valid(service, style):
             return style
-    return DEFAULT_THEME
+    return DEFAULT_STYLE.get(service, DEFAULT_THEME)
 
 
 async def resolve(db: PrefStore, user_id: int, service: str) -> str:
     try:
         rows = await db.get_style_prefs(user_id)
     except Exception:
-        return DEFAULT_THEME  # never block a report because preferences are unavailable
+        return DEFAULT_STYLE.get(service, DEFAULT_THEME)  # never block a report because preferences are unavailable
     return pick(rows, user_id, service)
 
 
