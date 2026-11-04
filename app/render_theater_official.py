@@ -189,7 +189,7 @@ def render_theater_official(
 
     summary_h = 0
     if full_summary:
-        summary_h = 70 + 62 * 5 + 40 + 70 + 3 * 92 + (190 if data.fastest else 0) + 40
+        summary_h = 70 + 62 * 5 + 40 + 70 + 3 * 92 + (150 if data.fastest else 0) + 40
     cast_h = (110 + sum(h + GAP for h in heights) + 30) if pairs else 0
     height = 330 + summary_h + cast_h + 150
     img = _fill_page(height)
@@ -241,14 +241,17 @@ def render_theater_official(
 
         # statistics
         d = ImageDraw.Draw(img, "RGBA")
-        mode = f"{data.difficulty_name} Mode" if data.difficulty_name else "Imaginarium Theater"
+        # The official page names difficulty id 5 "Visionary Mode" (seen side by side on a real account).
+        name = {5: "Visionary"}.get(data.difficulty, data.difficulty_name)
+        mode = f"{name} Mode" if name else "Imaginarium Theater"
         d.text((PAD + 6, y + 18), mode, font=font("serif-bold", 30), fill=TEXT, anchor="lm")
         d.text((W - PAD - 6, y + 18), f"Performance Duration: {_duration(data.total_cast_seconds)}", font=font("regular", 20), fill=MUTED, anchor="rm")
         y += 56
         labels = {"most_damage": "Highest Damage Dealt", "most_defeats": "Most Opponents Defeated", "most_damage_taken": "Most Damage Taken"}
         _rr(img, (PAD, y, W - PAD, y + 92 * max(1, len(data.stats))), 8, fill=(255, 255, 255, 12), outline=LINE)
         d = ImageDraw.Draw(img, "RGBA")
-        for i, s in enumerate(data.stats[:3]):
+        order = {"most_damage": 0, "most_defeats": 1, "most_damage_taken": 2}
+        for i, s in enumerate(sorted(data.stats, key=lambda t: order.get(t.key, 9))[:3]):
             ry = y + i * 92
             if i:
                 _rr(img, (PAD + 14, ry, W - PAD - 14, ry), 0, fill=LINE)
@@ -260,8 +263,8 @@ def render_theater_official(
             d.text((PAD + 6, y + 16), "Team That Completed the Performance the Fastest", font=font("semibold", 22), fill=TEXT, anchor="lm")
             y += 44
             for i, c in enumerate(data.fastest[:4]):
-                _tile(img, d, PAD + 6 + i * (TILE_W + 14), y, _sc(TChar(icon=c.icon, level=c.level, rarity=c.rarity, candidates=c.candidates)), load_icon(icons.get(c.icon)))
-            y += TILE_H + 40
+                _mini(img, PAD + 6 + i * 78, y, 66, c, load_icon(icons.get(c.icon)))
+            y += 66 + 36
 
     # cast list, two acts per row
     if pairs:

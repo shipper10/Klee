@@ -9,7 +9,7 @@ from typing import Any
 
 from app.abyss import icon_candidates
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 DIFFICULTIES = {1: "Easy", 2: "Normal", 3: "Hard", 4: "Visionary", 5: "Arcana Challenge"}
 CHAR_TYPES = {2: "Trial", 3: "Support"}  # 1 = the player's own character
 
@@ -148,7 +148,7 @@ class TheaterData:
                     booms=[str(b.get("name")) for b in r.get("buffs") or [] if b.get("name")],
                     caches=[str(b.get("name")) for b in r.get("choice_cards") or [] if b.get("name")],
                     blessing_level=num(((r.get("splendour_buff") or {}).get("summary") or {}).get("total_level")),
-                    blessing_text=re.sub(r"\s+", " ", re.sub(r"<[^>]*>", "", str(((r.get("splendour_buff") or {}).get("summary") or {}).get("desc") or ""))).strip(),
+                    blessing_text=re.sub(r"\s+", " ", re.sub(r"<[^>]*>", "", str(((r.get("splendour_buff") or {}).get("summary") or {}).get("desc") or "").replace("\\n", " "))).strip(),
                 )
             )
         return cls(

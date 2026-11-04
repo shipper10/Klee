@@ -192,3 +192,11 @@ def test_parse_stellas_and_optional_blessing():
     assert t.acts[0].blessing_level == 8 and t.acts[0].blessing_text == "Level 8: Max HP +6400."
     assert t.acts[1].blessing_level == 0 and t.acts[1].blessing_text == ""
     assert TheaterData.from_json(t.to_json()) == t
+
+
+def test_literal_backslash_n_in_blessing_text_becomes_a_space():
+    from app.theater import TheaterData
+
+    raw = {"data": [{"has_data": True, "schedule": {"start_time": "1", "end_time": "2"},
+           "detail": {"rounds_data": [{"round_id": 1, "splendour_buff": {"summary": {"total_level": 1, "desc": "Max HP +1.\\nThe buff is 100%."}}}]}}]}
+    assert TheaterData.from_raw(raw, now=5).acts[0].blessing_text == "Max HP +1. The buff is 100%."
