@@ -25,7 +25,7 @@ def test_pick_precedence():
     assert pick(rows, 5, "notes") == "sakura"      # own "all"
     assert pick(rows, 5, "abyss") == "sakura"      # own beats owner
     assert pick([], 5, "notes") == "classic"
-    assert pick([{"user_id": 5, "service": "*", "style": "nope"}], 5, "abyss") == "classic"
+    assert pick([{"user_id": 5, "service": "*", "style": "nope"}], 5, "notes") == "classic"
     assert is_valid("abyss", "paper") and not is_valid("abyss", "x") and not is_valid("zzz", "paper")
     assert current_choice(rows, 5, ALL) == "sakura" and current_choice(rows, 5, "abyss") is None
 
