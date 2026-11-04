@@ -241,8 +241,7 @@ def render_theater_official(
 
         # statistics
         d = ImageDraw.Draw(img, "RGBA")
-        # The official page names difficulty id 5 "Visionary Mode" (seen side by side on a real account).
-        name = {5: "Visionary"}.get(data.difficulty, data.difficulty_name)
+        name = data.difficulty_name  # follows the mode actually played (Easy/Normal/Hard/Visionary/Arcana Challenge)
         mode = f"{name} Mode" if name else "Imaginarium Theater"
         d.text((PAD + 6, y + 18), mode, font=font("serif-bold", 30), fill=TEXT, anchor="lm")
         d.text((W - PAD - 6, y + 18), f"Performance Duration: {_duration(data.total_cast_seconds)}", font=font("regular", 20), fill=MUTED, anchor="rm")

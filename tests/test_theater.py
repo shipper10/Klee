@@ -200,3 +200,17 @@ def test_literal_backslash_n_in_blessing_text_becomes_a_space():
     raw = {"data": [{"has_data": True, "schedule": {"start_time": "1", "end_time": "2"},
            "detail": {"rounds_data": [{"round_id": 1, "splendour_buff": {"summary": {"total_level": 1, "desc": "Max HP +1.\\nThe buff is 100%."}}}]}}]}
     assert TheaterData.from_raw(raw, now=5).acts[0].blessing_text == "Max HP +1. The buff is 100%."
+
+
+def test_official_mode_title_follows_the_mode_played():
+    import io
+    from datetime import datetime, timezone
+
+    from app.render_theater_official import render_theater_official
+    from app.theater import DIFFICULTIES
+
+    assert DIFFICULTIES[4] == "Visionary" and DIFFICULTIES[5] == "Arcana Challenge" and DIFFICULTIES[3] == "Hard"
+    for mode in (3, 4, 5):  # all must render, the title comes from the data
+        d = _official_data(2)
+        d.difficulty = mode
+        assert render_theater_official(d, nickname="n", icons={}, acts=d.acts, tz_hours=3, fetched_at=datetime(2026, 11, 4, tzinfo=timezone.utc), source="live")
