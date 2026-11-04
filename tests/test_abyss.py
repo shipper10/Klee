@@ -17,3 +17,12 @@ def test_official_render_always_has_summary_and_handles_missing():
     assert Image.open(io.BytesIO(png)).size[1] > 900  # summary + floor
     empty = AbyssData(period_start=None, period_end=None, total_stars=0, max_floor="", total_battles=0, most_played=[], stats=[], floors=one)
     assert render_abyss_official(empty, nickname="", icons={}, floors=one, tz_hours=0, fetched_at=now, source="cached")
+
+
+def test_notable_stat_portraits_are_downloaded():
+    from app.abyss import AbyssData
+
+    raw = {"defeat_rank": [{"value": 19, "avatar_id": 10000089, "avatar_icon": "https://x/UI_AvatarIcon_Furina.png"}], "floors": []}
+    d = AbyssData.from_raw(raw)
+    keys = dict(d.icon_candidates())
+    assert d.stats[0].icon in keys and len(keys[d.stats[0].icon]) >= 2

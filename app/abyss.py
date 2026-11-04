@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 _ICON_NAME = re.compile(r"UI_AvatarIcon(?:_Side)?_(.+?)\.png")
@@ -78,6 +78,7 @@ class Stat:
     key: str  # most_kills | strongest_strike | most_damage_taken | most_bursts_used | most_skills_used
     value: int
     icon: str = ""
+    candidates: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -137,6 +138,9 @@ class AbyssData:
     def icon_candidates(self) -> list[tuple[str, list[str]]]:
         """(lookup key, download candidates) for every distinct icon."""
         found = {c.icon: c.candidates for c in self._all_chars() if c.icon}
+        for st in self.stats:  # Notable Stats portraits
+            if st.icon:
+                found.setdefault(st.icon, st.candidates or [st.icon])
         return list(found.items())
 
     @property
@@ -178,7 +182,9 @@ class AbyssData:
         ):
             top = (raw.get(rank_key) or [None])[0]
             if top:
-                stats.append(Stat(key=key, value=to_int(top.get("value")), icon=icon_of(top, "avatar_icon")))
+                url = icon_of(top, "avatar_icon")
+                cands = icon_candidates(url, to_int(top.get("avatar_id") or top.get("id")))
+                stats.append(Stat(key=key, value=to_int(top.get("value")), icon=url or (cands[0] if cands else ""), candidates=cands))
 
         floors: list[Floor] = []
         for f in raw.get("floors") or []:

@@ -42,6 +42,7 @@ from app.render_showcase_profile import render_profile_showcase, splash_key
 from app.render_diary import render_diary_card
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
+from app.render_notes_official import render_notes_official
 from app.render_character import render_character_card
 from app.profile import find_characters
 from app.render_stygian import render_stygian_card
@@ -587,8 +588,13 @@ async def _send_notes(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         result = await deps.provider.get_notes(account)
         style = await resolve_style(deps.db, user_id, "notes")
+        official = style == "official"
+        extra: dict[str, Any] = {}
+        if official:
+            urls = [u for u in dict.fromkeys(e.icon for e in result.data.expeditions) if u]
+            extra["icons"] = (await _icons(deps, [(u, [u]) for u in urls])).images if urls else {}
         png = await _timed_render(
-            render_notes_card,
+            render_notes_official if official else render_notes_card,
             result.data,
             nickname=account.get("nickname") or "Traveler",
             uid_masked=mask_uid(account["game_uid"]),
@@ -596,6 +602,7 @@ async def _send_notes(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
             fetched_at=result.fetched_at,
             source=result.source,
             style=style,
+            **extra,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)

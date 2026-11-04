@@ -224,3 +224,5 @@ Official in-game element icons (UI_Icon_Element_*) are bundled in `app/assets/el
 
 ## Milestone 15 - Spiral Abyss official look
 `render_abyss_official` (layout "official", default for abyss; classic stays selectable). The Challenge Summary (stars, deepest descent, battles, most played, notable stats) is always drawn on top, also for `/abyss 11` or `/abyss 12`. Chamber halves sit side by side to keep the image short. Star icons: GenshinUID textures (GPL-3.0).
+
+Milestone 16 - Notes official look + Abyss stat icons: Notes uses cream cards (resin full width, 2x2 grid, two-column expeditions) with bundled game icons; expedition portraits come from HoYoLAB side icons (notes schema 2). Abyss "Notable Stats" portraits are now downloaded like the other icons (they were missing from the fetch list; abyss schema 4).

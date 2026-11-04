@@ -138,7 +138,7 @@ def test_official_style_renders_and_is_the_default():
         Image.open(io.BytesIO(png)).verify()
     # nothing downloaded: still renders
     Image.open(io.BytesIO(render_stygian_official(data, nickname="x", icons={}, multi=False, tz_hours=8, fetched_at=NOW, source="cached"))).verify()
-    assert pick([], 5, "stygian") == "official" and pick([], 5, "notes") == "classic"
+    assert pick([], 5, "stygian") == "official" and pick([], 5, "diary") == "classic"
     assert pick([{"user_id": 5, "service": "stygian", "style": "aurora"}], 5, "stygian") == "aurora"
 
 

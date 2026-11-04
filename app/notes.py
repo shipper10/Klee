@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass
 class ExpeditionInfo:
     remaining_seconds: int
+    icon: str = ""  # HoYoLAB side icon URL of the character sent on the expedition
 
     @property
     def finished(self) -> bool:
@@ -64,7 +65,7 @@ class NotesData:
             ),
             max_expeditions=int(notes.max_expeditions),
             expeditions=[
-                ExpeditionInfo(remaining_seconds=int(e.remaining_time.total_seconds()))
+                ExpeditionInfo(remaining_seconds=int(e.remaining_time.total_seconds()), icon=str(getattr(e, "character_icon", "") or ""))
                 for e in notes.expeditions
             ],
         )
