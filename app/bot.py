@@ -46,6 +46,7 @@ from app.render_character import render_character_card
 from app.profile import find_characters
 from app.render_stygian import render_stygian_card
 from app.render_theater import render_theater_card, select_acts
+from app.render_theater_official import render_theater_official
 from app.render_profile import render_profile_card, select_characters
 
 log = logging.getLogger(__name__)
@@ -720,16 +721,18 @@ async def _send_theater(
         result = await deps.provider.get_theater(account, previous=previous)
         if not result.data.unlocked:
             raise NoRecords("Imaginarium Theater is not unlocked on this account yet.")
-        acts = select_acts(result.data, show_all)
+        style = await resolve_style(deps.db, user_id, "theater")
+        official = style == "official"
+        acts = sorted(result.data.acts, key=lambda a: a.number) if official else select_acts(result.data, show_all)
         if not result.data.has_data:
             raise NoRecords(
                 "No Imaginarium Theater records for the " + ("previous" if previous else "current")
                 + " season." + ("" if previous else " Try /theater previous.")
             )
         fetched = await _icons(deps, result.data.icon_candidates())
-        style = await resolve_style(deps.db, user_id, "theater")
+        extra = dict(uid=str(account["game_uid"]), previous=previous) if official else {}
         png = await _timed_render(
-            render_theater_card,
+            render_theater_official if official else render_theater_card,
             result.data,
             nickname=account.get("nickname") or "Traveler",
             icons=fetched.images,
@@ -738,6 +741,7 @@ async def _send_theater(
             fetched_at=result.fetched_at,
             source=result.source,
             style=style,
+            **extra,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)

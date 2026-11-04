@@ -216,3 +216,8 @@ Official in-game element icons (UI_Icon_Element_*) are bundled in `app/assets/el
 - Data rules: only fields HoYoLAB sends are drawn (`times` -> roll ticks, `base`/`add` -> small numbers). Missing -> not drawn. Weapon max level only when `promote_level` is sent. Own-element DMG bonus chosen by name match only.
 - `/character <name> compare` renders classic, showcase and build from the same data. Owner `/debug character <name>` prints which fields the real payload contains.
 - Credits: yuanshen.ttf, stat icons, lock icon, star rows from GenshinUID (GPL-3.0); element icons from helingping/gsgametextures; all game art (c) HoYoverse.
+
+## Milestone 14: Theater official look (two acts per row)
+- `app/render_theater_official.py`: library header, "Past Performances" panel (best record, stella row, flowers, support counts), statistics, then the Cast List with cream act cards, two per row. Default style for `theater` (classic stays selectable). In this style all acts are shown (the 2-column grid keeps the image short).
+- Data: `stellas` (`get_medal_round_list`) and per-act blessing level/text are parsed only if HoYoLAB sends them (`splendour_buff.summary`); otherwise those parts are simply not drawn. `/debug theater` now lists round keys to confirm.
+- Textures (library background, stella and trophy icons) from GenshinUID (GPL-3.0).

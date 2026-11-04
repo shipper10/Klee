@@ -145,3 +145,50 @@ def test_describe_raw_is_safe_and_shows_picks():
     text = describe_raw(raw, now=1793600000)
     assert "seasons in payload: 2" in text and "acts=2" in text and "current picks: 2026-" in text
     assert "previous picks:" in text and "nothing" not in text
+
+
+# ---- official look: two acts per row ----------------------------------------------------------------------------
+def _official_data(n_acts=3, **kw):
+    from app.theater import TAct, TChar, TStat, TheaterData
+
+    ch = lambda k=1: TChar(icon="u/x", level=90, rarity=5, kind=k)  # noqa: E731
+    acts = [TAct(number=i + 1, medal=i % 2 == 0, finish_time=1793700000 + i, characters=[ch(2), ch(), ch(3), ch()],
+                 booms=["Boom"] * (i % 3), caches=["Cache"], **kw) for i in range(n_acts)]
+    return TheaterData(unlocked=True, has_data=True, period_start=1793500000, period_end=1796100000, difficulty=4, best_act=n_acts,
+                       medals=2, fantasia_flowers=1400, audience_support=3, arcana_completed=2, total_cast_seconds=557,
+                       stellas=[True, False, True], stats=[TStat("most_damage", ch())], fastest=[ch()], acts=acts)
+
+
+def test_official_render_two_columns_is_shorter_than_one_column_and_survives_gaps():
+    import io
+    from datetime import datetime, timezone
+
+    from PIL import Image
+
+    from app.render_theater_official import render_theater_official
+
+    def render(data, **kw):
+        png = render_theater_official(data, nickname="n", icons={}, acts=data.acts, tz_hours=3, fetched_at=datetime(2026, 11, 4, tzinfo=timezone.utc), source="live", **kw)
+        return Image.open(io.BytesIO(png))
+
+    six, two = render(_official_data(6)), render(_official_data(2))
+    assert six.width == 1080 and six.height < two.height + 3 * 700  # 6 acts = 3 rows, not 6
+    assert render(_official_data(0)).width == 1080  # summary only
+    from app.theater import TheaterData
+
+    assert render(TheaterData(unlocked=True, has_data=True)).width == 1080  # nothing but defaults
+    assert render(_official_data(3), previous=True, uid="123456789").width == 1080
+
+
+def test_parse_stellas_and_optional_blessing():
+    from app.theater import TheaterData
+
+    raw = {"is_unlock": True, "data": [{"has_data": True, "schedule": {"start_time": "100", "end_time": "200"},
+           "stat": {"get_medal_round_list": [True, False, 1], "max_round_id": 3},
+           "detail": {"rounds_data": [{"round_id": 1, "splendour_buff": {"summary": {"total_level": 8, "desc": "Level <color=#f90>8</color>:  Max HP +6400."}}},
+                                      {"round_id": 2}]}}]}
+    t = TheaterData.from_raw(raw, now=150)
+    assert t.stellas == [True, False, True]
+    assert t.acts[0].blessing_level == 8 and t.acts[0].blessing_text == "Level 8: Max HP +6400."
+    assert t.acts[1].blessing_level == 0 and t.acts[1].blessing_text == ""
+    assert TheaterData.from_json(t.to_json()) == t

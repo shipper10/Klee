@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from app.abyss import icon_candidates
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 DIFFICULTIES = {1: "Easy", 2: "Normal", 3: "Hard", 4: "Visionary", 5: "Arcana Challenge"}
 CHAR_TYPES = {2: "Trial", 3: "Support"}  # 1 = the player's own character
 
@@ -59,6 +60,8 @@ class TAct:
     characters: list[TChar] = field(default_factory=list)
     booms: list[str] = field(default_factory=list)  # Wondrous Booms
     caches: list[str] = field(default_factory=list)  # Mystery Caches
+    blessing_level: int = 0  # only if HoYoLAB sends it (round `splendour_buff.summary`), else 0
+    blessing_text: str = ""
 
 
 @dataclass
@@ -81,6 +84,7 @@ class TheaterData:
     assists: int = 0
     arcana_completed: int = 0
     total_cast_seconds: int = 0
+    stellas: list[bool] = field(default_factory=list)  # one flag per act: Star Challenge Stella obtained (`get_medal_round_list`)
     stats: list[TStat] = field(default_factory=list)
     fastest: list[TChar] = field(default_factory=list)
     acts: list[TAct] = field(default_factory=list)
@@ -143,6 +147,8 @@ class TheaterData:
                     characters=[char(a, level=num(a.get("level")), kind=num(a.get("avatar_type"), 1)) for a in r.get("avatars") or []],
                     booms=[str(b.get("name")) for b in r.get("buffs") or [] if b.get("name")],
                     caches=[str(b.get("name")) for b in r.get("choice_cards") or [] if b.get("name")],
+                    blessing_level=num(((r.get("splendour_buff") or {}).get("summary") or {}).get("total_level")),
+                    blessing_text=re.sub(r"\s+", " ", re.sub(r"<[^>]*>", "", str(((r.get("splendour_buff") or {}).get("summary") or {}).get("desc") or ""))).strip(),
                 )
             )
         return cls(
@@ -152,6 +158,7 @@ class TheaterData:
             medals=num(stat.get("medal_num")), fantasia_flowers=num(stat.get("coin_num")),
             audience_support=num(stat.get("avatar_bonus_num")), assists=num(stat.get("rent_cnt")),
             arcana_completed=num(stat.get("tarot_finished_cnt")), total_cast_seconds=num(fight.get("total_use_time")),
+            stellas=[bool(x) for x in stat.get("get_medal_round_list") or []],
             stats=stats,
             fastest=[char(a, value=num(a.get("value"))) for a in fight.get("shortest_avatar_list") or []],
             acts=acts,
@@ -183,6 +190,10 @@ def describe_raw(raw: Mapping[str, Any], now: int | None = None) -> str:
         st = e.get("stat") or {}
         lines.append("    stat: " + ", ".join(f"{k}={v}" for k, v in st.items() if isinstance(v, (int, float, bool))))
         lines.append("    detail keys: " + ", ".join(sorted(det.keys())))
+        rd = (det.get("rounds_data") or [{}])[0]
+        lines.append("    round keys: " + ", ".join(sorted(rd.keys())))
+        lines.append("    splendour_buff keys: " + ", ".join(sorted((rd.get("splendour_buff") or {}).keys())) + " | summary keys: " + ", ".join(sorted(((rd.get("splendour_buff") or {}).get("summary") or {}).keys())))
+        lines.append(f"    medal list len: {len(st.get('get_medal_round_list') or [])}")
     for name, prev in (("current", False), ("previous", True)):
         picked = pick_season(entries, prev, now)
         sc = picked.get("schedule") or {}
