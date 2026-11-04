@@ -1,66 +1,54 @@
 import asyncio
-import io
 from types import SimpleNamespace
 
-from PIL import Image
 
 from app import settings_menu
-from app.bot import Deps, on_settings
-from app.render_abyss import render_abyss_card, select_floors
-from app.render_notes import render_notes_card
-from app.styles import ALL, SERVICES, GLOBAL_USER, current_choice, is_valid, pick, resolve
-from app.ui_kit import THEMES
-from tests.test_render_abyss import FETCHED, _icon, sample as abyss_sample
-from tests.test_render_notes import sample as notes_sample
+from app.bot import on_settings
+from app.renderers import RENDERERS, renderer
+from app.styles import ALL, DEFAULT_STYLE, GLOBAL_USER, LAYOUTS, SERVICE_STYLES, SERVICES, current_choice, is_valid, pick, resolve
+
+
+def test_registry_is_consistent():
+    """Every design offered to users has a drawing function, a label, and every service has a valid default."""
+    assert set(SERVICES) == set(SERVICE_STYLES) == set(DEFAULT_STYLE)
+    for svc, styles in SERVICE_STYLES.items():
+        assert DEFAULT_STYLE[svc] in styles
+        for st in styles:
+            assert (svc, st) in RENDERERS and st in LAYOUTS
+    assert set(RENDERERS) == {(s, st) for s, sts in SERVICE_STYLES.items() for st in sts}
+
+
+def test_unknown_style_falls_back_to_default_design():
+    assert renderer("abyss", "aurora") is RENDERERS[("abyss", "official")]
+    assert renderer("character", "nope") is RENDERERS[("character", "build")]
 
 
 def test_pick_precedence():
     rows = [
-        {"user_id": 0, "service": "*", "style": "aurora"},
-        {"user_id": 0, "service": "abyss", "style": "paper"},
-        {"user_id": 5, "service": "*", "style": "sakura"},
+        {"user_id": 0, "service": "*", "style": "showcase"},
+        {"user_id": 0, "service": "character", "style": "build"},
+        {"user_id": 5, "service": "*", "style": "showcase"},
     ]
-    assert pick(rows, 9, "notes") == "aurora"      # owner default for all
-    assert pick(rows, 9, "abyss") == "paper"       # owner default for that service
-    assert pick(rows, 5, "notes") == "sakura"      # own "all"
-    assert pick(rows, 5, "abyss") == "sakura"      # own beats owner
-    assert pick([], 5, "zzz") == "classic"
-    assert pick([{"user_id": 5, "service": "*", "style": "nope"}], 5, "zzz") == "classic"
-    assert is_valid("abyss", "paper") and not is_valid("abyss", "x") and not is_valid("zzz", "paper")
-    assert current_choice(rows, 5, ALL) == "sakura" and current_choice(rows, 5, "abyss") is None
+    assert pick(rows, 9, "profile") == "showcase"      # owner default for all (valid for profile)
+    assert pick(rows, 9, "notes") == "official"        # "all" pick is not valid for notes -> default
+    assert pick(rows, 9, "character") == "build"       # owner default for that service
+    assert pick(rows, 5, "character") == "showcase"    # own "all" beats owner's service default
+    assert pick([], 5, "abyss") == "official"
+    assert pick([{"user_id": 5, "service": "abyss", "style": "aurora"}], 5, "abyss") == "official"  # removed design
+    assert is_valid("character", "build") and not is_valid("character", "x") and not is_valid("zzz", "build")
+    assert current_choice(rows, 5, ALL) == "showcase" and current_choice(rows, 5, "abyss") is None
 
 
 def test_resolve_survives_db_failure():
     class Broken:
         async def get_style_prefs(self, uid):
             raise RuntimeError("x")
-    assert asyncio.run(resolve(Broken(), 1, "zzz")) == "classic"
-
-
-def test_every_style_renders_and_differs():
-    data = abyss_sample()
-    icons = {u: _icon(u) for u in data.icon_urls()}
-    pngs = {}
-    for sid in THEMES:
-        pngs[sid] = render_abyss_card(data, nickname="x", icons=icons, floors=select_floors(data, None), tz_hours=8,
-                                       fetched_at=FETCHED, source="live", style=sid)
-        Image.open(io.BytesIO(pngs[sid])).verify()
-        n = render_notes_card(notes_sample(), nickname="x", uid_masked="1***", server_label="EU", fetched_at=FETCHED, source="live", style=sid)
-        Image.open(io.BytesIO(n)).verify()
-    assert len(set(pngs.values())) == len(THEMES)
-    # unknown style falls back to classic
-    again = render_abyss_card(data, nickname="x", icons=icons, floors=select_floors(data, None), tz_hours=8,
-                              fetched_at=FETCHED, source="live", style="bogus")
-    assert again == pngs["classic"]
-
-
-def test_preview_renders():
-    Image.open(io.BytesIO(settings_menu.render_style_preview())).verify()
+    assert asyncio.run(resolve(Broken(), 1, "abyss")) == "official"
 
 
 def test_menu_callbacks_fit_telegram_limit():
     for scope in ("u", "g"):
-        for svc in ["all", *SERVICES]:
+        for svc in SERVICES:
             text, markup = settings_menu.style_page(scope, svc, [], 7)
             for row in markup.inline_keyboard:
                 for b in row:
@@ -120,17 +108,19 @@ def _run(data, user_id, db, admins=(1,), private=True):
 
 def test_user_sets_own_style_and_cannot_touch_owner_scope():
     db = FakeDb()
-    _, edits = _run("st:set:u:abyss:paper", 5, db)
-    assert db.prefs == {(5, "abyss"): "paper"} and edits
-    answers, _ = _run("st:set:g:abyss:aurora", 5, db)
-    assert (0, "abyss") not in db.prefs and "owner" in answers[0].lower()
+    _, edits = _run("st:set:u:character:showcase", 5, db)
+    assert db.prefs == {(5, "character"): "showcase"} and edits
+    answers, _ = _run("st:set:g:character:build", 5, db)
+    assert (0, "character") not in db.prefs and "owner" in answers[0].lower()
     answers, _ = _run("st:own", 5, db)
     assert "owner" in answers[0].lower()
-    _run("st:set:g:all:aurora", 1, db)
-    assert db.prefs[(GLOBAL_USER, "*")] == "aurora"
-    _run("st:set:u:abyss:default", 5, db)
-    assert (5, "abyss") not in db.prefs
-    _run("st:set:u:abyss:evil", 5, db)
+    _run("st:set:g:character:build", 1, db)
+    assert db.prefs[(GLOBAL_USER, "character")] == "build"
+    _run("st:set:u:character:default", 5, db)
+    assert (5, "character") not in db.prefs
+    _run("st:set:u:character:evil", 5, db)
+    assert (5, "character") not in db.prefs
+    _run("st:set:u:abyss:showcase", 5, db)  # a design that exists, but not for this report
     assert (5, "abyss") not in db.prefs
 
 

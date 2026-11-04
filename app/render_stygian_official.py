@@ -11,7 +11,7 @@ import io
 import math
 from datetime import datetime, timedelta, timezone
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from app.elements import element_icon
 from app.regions import mask_uid

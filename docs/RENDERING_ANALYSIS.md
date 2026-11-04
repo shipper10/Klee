@@ -1,3 +1,6 @@
+> **Status (4 Nov 2026): historical.** This analysis led to the Asset Manager, the Build Card and the official-look designs now in the code.
+> For the current structure and how to add a design, see [`ARCHITECTURE.md`](ARCHITECTURE.md). The old colour-theme renderers described in section 1 were removed.
+
 # Klee rendering: analysis and plan (Character Build Card)
 
 ## 1. Current system (as inspected)

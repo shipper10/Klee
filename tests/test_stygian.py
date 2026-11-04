@@ -6,7 +6,7 @@ from PIL import Image
 from app import bot
 from app.genshin_provider import Report
 from app.linking import utcnow
-from app.render_stygian import render_stygian_card
+from app.render_stygian_official import render_stygian_official
 from app.stygian import StygianData, clean
 from tests.test_abyss_flow import ACCOUNT, ctx, provider
 from tests.test_render_abyss import _icon
@@ -42,7 +42,7 @@ def render(data, multi=False, **kw):
     icons = {u: _icon(u) for u, _ in data.icon_candidates()}
     args = dict(nickname="shipper", icons=icons, multi=multi, tz_hours=8, fetched_at=NOW, source="live")
     args.update(kw)
-    return render_stygian_card(data, **args)
+    return render_stygian_official(data, **args)
 
 
 def test_parse_current_and_previous():
@@ -138,8 +138,8 @@ def test_official_style_renders_and_is_the_default():
         Image.open(io.BytesIO(png)).verify()
     # nothing downloaded: still renders
     Image.open(io.BytesIO(render_stygian_official(data, nickname="x", icons={}, multi=False, tz_hours=8, fetched_at=NOW, source="cached"))).verify()
-    assert pick([], 5, "stygian") == "official" and pick([], 5, "zzz") == "classic"
-    assert pick([{"user_id": 5, "service": "stygian", "style": "aurora"}], 5, "stygian") == "aurora"
+    assert pick([], 5, "stygian") == "official"
+    assert pick([{"user_id": 5, "service": "stygian", "style": "aurora"}], 5, "stygian") == "official"  # removed design -> default
 
 
 def test_describe_raw_lists_keys_only():

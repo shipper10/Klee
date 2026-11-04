@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 from PIL import Image
 
 from app.diary import DiaryData, month_for
-from app.render_diary import render_diary_card
-from app.ui_kit import THEMES
+from app.render_diary_official import render_diary_official
 
 RAW = {
     "uid": 700000001, "region": "os_euro", "nickname": "shipper", "data_month": 10,
@@ -40,11 +39,10 @@ def test_month_for_wraps_and_uses_server_time():
     assert month_for(-5, False, NOW) == (2026, 11)
 
 
-def test_render_all_styles():
+def test_render_official():
     d = DiaryData.from_raw(RAW)
     d.year = 2026
-    for sid in THEMES:
-        png = render_diary_card(d, nickname="shipper", fetched_at=NOW, source="live", style=sid)
-        Image.open(io.BytesIO(png)).verify()
+    png = render_diary_official([d], nickname="shipper", fetched_at=NOW, source="live")
+    Image.open(io.BytesIO(png)).verify()
     empty = DiaryData(month=11, year=2026)
-    Image.open(io.BytesIO(render_diary_card(empty, nickname="x", fetched_at=NOW, source="cached"))).verify()
+    Image.open(io.BytesIO(render_diary_official([empty], nickname="x", fetched_at=NOW, source="cached"))).verify()

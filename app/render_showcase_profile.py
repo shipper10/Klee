@@ -5,11 +5,11 @@ from __future__ import annotations
 import io
 from datetime import datetime, timezone
 
-from PIL import Image, ImageDraw
+from PIL import ImageDraw
 
 from app.profile import ProfChar, ProfileData
 from app.regions import mask_uid, server_label
-from app.render_showcase import ABBR, DEFAULT_ACCENT, ELEMENT, MUTED, TEXT, _background, _glass  # noqa: F401
+from app.render_showcase import DEFAULT_ACCENT, ELEMENT, MUTED, TEXT, _background, _glass
 from app.ui_kit import character_tile, fit_text, font, load_icon
 
 REPORT_VERSION = "showcase-profile-v1"

@@ -8,9 +8,9 @@ from app import bot
 from app.genshin_provider import Report
 from app.linking import utcnow
 from app.profile import ProfChar, ProfileData
-from app.render_profile import render_profile_card, select_characters
-from tests.fakes import FakeDatabase
-from tests.test_abyss_flow import ACCOUNT, FakeBot, FakeImages, ctx, provider
+from app.render_showcase_profile import render_profile_showcase
+from app.report_utils import select_characters
+from tests.test_abyss_flow import ACCOUNT, ctx, provider
 from tests.test_render_abyss import _icon
 
 NOW = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
@@ -34,13 +34,13 @@ def render(data=None, show_all=False, icons=True, **kw):
                 icons={c.icon: _icon(c.icon) for c in chars} if icons else {}, characters=chars,
                 fetched_at=NOW, source="live", summary=not show_all)
     args.update(kw)
-    return render_profile_card(data, **args)
+    return render_profile_showcase(data, **args)
 
 
 def test_sizes_and_limits():
     short = Image.open(io.BytesIO(render()))
     full = Image.open(io.BytesIO(render(sample(122), show_all=True)))
-    assert short.width == full.width == 1080
+    assert short.width == full.width == 1600
     assert full.width + full.height < 10000 and short.height < full.height
 
 

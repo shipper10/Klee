@@ -8,7 +8,6 @@ from app.linking import (
     hash_token,
     new_token,
     parse_ts,
-    utcnow,
 )
 from app.regions import is_international_server, mask_uid, server_label
 from tests.fakes import FakeDatabase

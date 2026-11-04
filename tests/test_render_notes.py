@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 from PIL import Image
 
 from app.notes import ExpeditionInfo, NotesData
-from app.render_notes import fmt_duration, render_notes_card
+from app.render_notes_official import render_notes_official
+from app.report_utils import fmt_duration
 
 FETCHED = datetime(2026, 10, 31, 10, 0, tzinfo=timezone.utc)
 
@@ -27,13 +28,13 @@ def render(data=None, **kw):
     args = dict(nickname="Traveler", uid_masked="71****678", server_label="Asia",
                 fetched_at=FETCHED, source="live", now=FETCHED)
     args.update(kw)
-    return render_notes_card(data or sample(), **args)
+    return render_notes_official(data or sample(), **args)
 
 
 def test_png_output_and_size():
     png = render()
     img = Image.open(io.BytesIO(png))
-    assert img.format == "PNG" and img.width == 960 and 1000 < img.height < 2500
+    assert img.format == "PNG" and img.width == 1080 and 800 < img.height < 2500
     assert len(png) < 2_000_000
     out = os.environ.get("KLEE_SAMPLE_OUT")
     if out:

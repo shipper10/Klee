@@ -8,7 +8,6 @@ from aiohttp.test_utils import TestServer
 
 import app.images as images
 from app import bot
-from app.abyss import AbyssData
 from app.crypto import CredentialCipher
 from app.errors import ChronicleHidden, ReauthRequired, UpstreamUnavailable
 from app.genshin_provider import GenshinProvider, Report

@@ -7,7 +7,7 @@ import logging
 from typing import Any, Protocol
 
 from app.errors import ReauthRequired
-from app.render_notes import fmt_duration
+from app.report_utils import fmt_duration
 
 log = logging.getLogger(__name__)
 

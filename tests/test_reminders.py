@@ -1,6 +1,5 @@
 import asyncio
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 from app import reminders
 from app.genshin_provider import Report

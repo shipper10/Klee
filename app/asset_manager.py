@@ -12,11 +12,9 @@ Two kinds of sources:
 from __future__ import annotations
 
 import io
-import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 from PIL import Image, ImageFont
 
@@ -145,7 +143,7 @@ class Assets:
     def stars(self, rarity: int) -> Image.Image | None:
         return self.ui(f"stars/{max(1, min(5, rarity))}")
 
-    def stat_icon(self, stat: Stat | None, size: int | None = None, fallback_element: str = "") -> Image.Image | None:
+    def stat_icon(self, stat: Stat | None, size: int | None = None) -> Image.Image | None:
         """Bundled icon by logical key; falls back to the HoYoLAB-provided icon if it was downloaded; else None."""
         if stat is None:
             return None

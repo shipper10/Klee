@@ -6,7 +6,7 @@ from PIL import Image
 from app import bot
 from app.genshin_provider import Report
 from app.linking import utcnow
-from app.render_theater import render_theater_card, select_acts
+from app.render_theater_official import render_theater_official
 from app.theater import TheaterData
 from tests.test_abyss_flow import ACCOUNT, ctx, provider
 from tests.test_render_abyss import _icon
@@ -35,11 +35,11 @@ def raw(acts=10, with_stats=True):
 
 
 def render(data, show_all=False, **kw):
-    acts = select_acts(data, show_all)
+    acts = sorted(data.acts, key=lambda a: -a.number) if show_all else sorted(data.acts, key=lambda a: -a.number)[:4]
     icons = {u: _icon(u) for u, _ in data.icon_candidates()}
     args = dict(nickname="shipper", icons=icons, acts=acts, tz_hours=8, fetched_at=NOW, source="live")
     args.update(kw)
-    return render_theater_card(data, **args)
+    return render_theater_official(data, **args)
 
 
 def test_from_raw_parses_fields_and_ignores_empty_stats():
@@ -64,7 +64,6 @@ def test_from_raw_is_lenient():
 
 def test_render_sizes_and_defaults():
     d = TheaterData.from_raw(raw(), now=TS)
-    assert [a.number for a in select_acts(d, False)] == [10, 9, 8, 7] and len(select_acts(d, True)) == 10
     full = Image.open(io.BytesIO(render(d, True)))
     short = Image.open(io.BytesIO(render(d)))
     assert full.width == 1080 and full.width + full.height < 10000 and short.height < full.height
@@ -98,11 +97,11 @@ class Prov:
 
 async def test_send_theater_flows():
     c = ctx(Prov(TheaterData.from_raw(raw(6), now=TS)))
-    await bot._send_theater(c, 1, 401, ACCOUNT, show_all=False)
+    await bot._send_theater(c, 1, 401, ACCOUNT)
     assert c.bot.photos[0][1][:4] == b"\x89PNG" and "Imaginarium" in c.bot.photos[0][2]
     for n, data, text in ((402, TheaterData(), "not unlocked"), (403, TheaterData(unlocked=True), "No Imaginarium")):
         c2 = ctx(Prov(data))
-        await bot._send_theater(c2, 1, n, ACCOUNT, show_all=False)
+        await bot._send_theater(c2, 1, n, ACCOUNT)
         assert text in c2.bot.messages[0][1] and not c2.bot.photos
 
 
@@ -127,10 +126,10 @@ def test_current_and_previous_seasons_are_picked_by_schedule():
 async def test_send_theater_previous_flag_and_hint():
     prov = Prov(TheaterData.from_raw(raw(4), now=TS))
     c = ctx(prov)
-    await bot._send_theater(c, 1, 410, ACCOUNT, show_all=False, previous=True)
+    await bot._send_theater(c, 1, 410, ACCOUNT, previous=True)
     assert prov.previous is True and "Previous" in c.bot.photos[0][2]
     c2 = ctx(Prov(TheaterData(unlocked=True)))
-    await bot._send_theater(c2, 1, 411, ACCOUNT, show_all=False)
+    await bot._send_theater(c2, 1, 411, ACCOUNT)
     assert "/theater previous" in c2.bot.messages[0][1]
 
 
@@ -203,7 +202,6 @@ def test_literal_backslash_n_in_blessing_text_becomes_a_space():
 
 
 def test_official_mode_title_follows_the_mode_played():
-    import io
     from datetime import datetime, timezone
 
     from app.render_theater_official import render_theater_official

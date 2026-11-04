@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from PIL import Image, ImageDraw
 
 from app.abyss import AbyssData, Chamber, Char, Floor, Stat
-from app.render_abyss import render_abyss_card, select_floors
+from app.render_abyss_official import render_abyss_official
+from app.report_utils import select_floors
 
 FETCHED = datetime(2026, 10, 31, 10, 0, tzinfo=timezone.utc)
 T0 = 1792242330  # 2026-10-17 ~14:45 UTC+8
@@ -49,13 +50,13 @@ def render(data=None, *, with_icons=True, only_floor=None, **kw):
     args = dict(nickname="shipper", icons=icons, floors=select_floors(data, only_floor), tz_hours=8,
                 fetched_at=FETCHED, source="live")
     args.update(kw)
-    return render_abyss_card(data, **args)
+    return render_abyss_official(data, **args)
 
 
 def test_png_dimensions_and_sample_output():
     png = render()
     img = Image.open(io.BytesIO(png))
-    assert img.width == 1080 and 2500 < img.height < 6000
+    assert img.width == 1080 and 1500 < img.height < 6000
     assert img.width + img.height < 10000  # Telegram photo limit
     assert len(png) < 5_000_000
     out = os.environ.get("KLEE_SAMPLE_OUT_ABYSS")
@@ -83,7 +84,7 @@ def test_missing_icons_use_placeholders():
 def test_corrupt_icon_does_not_crash():
     data = sample()
     icons = {u: b"not an image" for u in data.icon_urls()}
-    render_abyss_card(data, nickname="x", icons=icons, floors=select_floors(data, None), tz_hours=8,
+    render_abyss_official(data, nickname="x", icons=icons, floors=select_floors(data, None), tz_hours=8,
                       fetched_at=FETCHED, source="cached")
 
 

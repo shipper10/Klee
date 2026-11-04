@@ -14,7 +14,6 @@ from PIL import Image, ImageDraw
 
 from app.asset_manager import Assets
 from app.notes import NotesData
-from app.render_notes import fmt_duration  # noqa: F401  (kept for compatibility)
 from app.render_stygian_official import _circle, _wrap
 from app.ui_kit import font, load_icon
 

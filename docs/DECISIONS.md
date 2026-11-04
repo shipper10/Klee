@@ -228,3 +228,11 @@ Official in-game element icons (UI_Icon_Element_*) are bundled in `app/assets/el
 Milestone 16 - Notes official look + Abyss stat icons: Notes uses cream cards (resin full width, 2x2 grid, two-column expeditions) with bundled game icons; expedition portraits come from HoYoLAB side icons (notes schema 2). Abyss "Notable Stats" portraits are now downloaded like the other icons (they were missing from the fetch list; abyss schema 4).
 
 Milestone 17 - Diary official look: all available months (current + up to two before, as HoYoLAB keeps about three) side by side in one image, paper pages with income tiles, comparison text and a donut of Primogem sources. Older months that fail or are empty are left out. Sentences are generated from the numbers HoYoLAB sends; the game's flavour phrases ("Not bad!") are not reproduced.
+
+
+## Milestone 18 - fixed designs, cleanup (4 Nov 2026)
+- The new designs are now the only ones: Notes, Abyss, Theater, Stygian, Diary = "official"; Character = "build" (+ "showcase"); Profile = "showcase".
+- Removed: the seven old classic renderers (`render_abyss/theater/stygian/notes/diary/profile/character.py`), the four colour themes (classic, aurora, sakura, paper), the style preview image, the "All services" style choice (a global pick has no meaning when designs differ per report), and `/theater all`, `/diary previous` (the new designs always show everything).
+- Kept on purpose: the design system itself. `styles.py` lists designs per report, `renderers.py` maps (report, design) to a drawing function, and a stored choice that no longer exists is ignored. A future design is one function plus two registry lines (see `ARCHITECTURE.md`).
+- Moved shared helpers (time formats, floor/character selection, Abyss stat labels) to `report_utils.py`; `ui_kit.py` now only holds fonts, icon decoding, text fitting and the portrait tile.
+- Existing rows in `style_prefs` need no migration.

@@ -9,7 +9,7 @@ from __future__ import annotations
 import io
 from datetime import datetime, timezone
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 from app.asset_manager import Art, Assets, game_font
 from app.build_card import layers
@@ -41,10 +41,6 @@ def _rr(img: Image.Image, box: tuple[int, int, int, int], radius: int, fill) -> 
     layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     ImageDraw.Draw(layer).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=fill)
     img.alpha_composite(layer, (x0, y0))
-
-
-def _ln(img: Image.Image, p0: tuple[int, int], p1: tuple[int, int], fill, width: int = 1) -> None:
-    _rr(img, (p0[0], p0[1], p1[0], p1[1] + width - 1), 0, fill)
 
 
 def _fit(d: ImageDraw.ImageDraw, s: str, size: int, max_w: int) -> int:

@@ -67,10 +67,6 @@ class BuildModel:
     set_icon: str = ""
 
 
-def _clean(v: str) -> str:
-    return v.replace("\xa0", " ").strip()
-
-
 def _row(s: Stat) -> StatRow:
     base, add = group_digits(s.base), group_digits(s.add)
     show = bool(base and add and add not in ("0", "+0", "0%"))

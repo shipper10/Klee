@@ -1,4 +1,3 @@
-import json
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer

@@ -7,7 +7,6 @@ import io
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import timedelta
 from typing import Any
 
 from telegram import (
@@ -29,28 +28,16 @@ from app.linking import TOKEN_TTL, hash_token, new_token, utcnow
 from app.regions import mask_uid, server_label, server_utc_offset
 from app.styles import label as style_label
 from app.styles import resolve as resolve_style
-from app.styles import SERVICE_STYLES, known as styles_known
+from app.styles import SERVICE_STYLES
 from app import reminders, settings_menu, timing
 from app.stygian import describe_raw as describe_stygian_raw
 from app.theater import describe_raw as describe_theater_raw
 from app.character import describe_raw as describe_character_raw, splash_for
-from app.render_stygian_official import render_stygian_official
-from app.render_showcase import render_character_showcase
-from app.build_card.template import render_character_build
 from app.asset_manager import plan_character_art
-from app.render_showcase_profile import render_profile_showcase, splash_key
-from app.render_diary import render_diary_card
-from app.render_diary_official import render_diary_official
-from app.render_abyss import render_abyss_card, select_floors
-from app.render_notes import render_notes_card
-from app.render_notes_official import render_notes_official
-from app.render_character import render_character_card
+from app.render_showcase_profile import splash_key
+from app.renderers import renderer
+from app.report_utils import select_characters, select_floors
 from app.profile import find_characters
-from app.render_stygian import render_stygian_card
-from app.render_theater import render_theater_card, select_acts
-from app.render_abyss_official import render_abyss_official
-from app.render_theater_official import render_theater_official
-from app.render_profile import render_profile_card, select_characters
 
 log = logging.getLogger(__name__)
 
@@ -84,9 +71,9 @@ HELP_TEXT = (
     "/setaccount – choose the default account\n"
     "/notes – Daily Notes image (add “pick” to choose an account)\n"
     "/abyss – Spiral Abyss image (options: previous, or a floor number like 12)\n"
-    "/theater – Imaginarium Theater image (options: previous, all)\n"
+    "/theater – Imaginarium Theater image (option: previous)\n"
     "/stygian – Stygian Onslaught image (options: previous, coop)\n"
-    "/diary – primogems and mora income this month (option: previous)\n"
+    "/diary – primogems and mora income of the last months\n"
     "/profile – account overview with your top characters\n"
     "/characters – all your characters\n"
     "/character <name> – weapon, artifacts, talents and stats of one character (add: compare, to see every style)\n"
@@ -291,8 +278,8 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     deps = _deps(context)
     if not _private(update) or update.effective_user.id not in deps.admin_ids:
         return
-    what = (context.args[0].lower() if context.args else "")
     message = update.effective_message
+    what = (context.args[0].lower() if context.args else "")
     if what == "timing":
         await message.reply_text(timing.summary())
     elif what == "stygian":
@@ -396,11 +383,6 @@ async def on_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await query.answer()
             await query.delete_message()
             return
-        if action == "prev":
-            await query.answer()
-            png = await asyncio.to_thread(settings_menu.render_style_preview)
-            await context.bot.send_photo(query.message.chat.id, photo=io.BytesIO(png), caption="The available image styles")
-            return
         if action == "rem" and len(parts) <= 2:
             await query.answer()
             if len(parts) == 2:
@@ -425,8 +407,8 @@ async def on_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if len(parts) != 4 or parts[1] not in ("u", "g") or not settings_menu.valid_svc(parts[2]):
                 await query.answer()
                 return
-            scope, svc, style = parts[1], settings_menu.svc_key(parts[2]), parts[3]
-            if style != "default" and not (styles_known(style) and style in SERVICE_STYLES.get(svc if svc != "*" else "notes", [])):
+            scope, svc, style = parts[1], parts[2], parts[3]
+            if style != "default" and style not in SERVICE_STYLES.get(svc, []):
                 await query.answer()
                 return
             await deps.db.set_style_pref(0 if scope == "g" else user_id, svc, None if style == "default" else style)
@@ -589,21 +571,18 @@ async def _send_notes(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         result = await deps.provider.get_notes(account)
         style = await resolve_style(deps.db, user_id, "notes")
-        official = style == "official"
-        extra: dict[str, Any] = {}
-        if official:
-            urls = [u for u in dict.fromkeys(e.icon for e in result.data.expeditions) if u]
-            extra["icons"] = (await _icons(deps, [(u, [u]) for u in urls])).images if urls else {}
+        urls = [u for u in dict.fromkeys(e.icon for e in result.data.expeditions) if u]
+        icons = (await _icons(deps, [(u, [u]) for u in urls])).images if urls else {}
         png = await _timed_render(
-            render_notes_official if official else render_notes_card,
+            renderer("notes", style),
             result.data,
+            icons=icons,
             nickname=account.get("nickname") or "Traveler",
             uid_masked=mask_uid(account["game_uid"]),
             server_label=server_label(account["region"]),
             fetched_at=result.fetched_at,
             source=result.source,
             style=style,
-            **extra,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
@@ -642,7 +621,7 @@ async def _send_abyss(
         icons = fetched.images
         style = await resolve_style(deps.db, user_id, "abyss")
         png = await _timed_render(
-            render_abyss_official if style == "official" else render_abyss_card,
+            renderer("abyss", style),
             result.data,
             nickname=account.get("nickname") or "Traveler",
             icons=icons,
@@ -650,7 +629,6 @@ async def _send_abyss(
             tz_hours=server_utc_offset(account["region"]),
             fetched_at=result.fetched_at,
             source=result.source,
-            full_summary=True,
             style=style,
         )
     except BotError as exc:
@@ -685,11 +663,11 @@ async def _send_profile(
         chars = select_characters(result.data, show_all)
         style = await resolve_style(deps.db, user_id, "profile")
         wanted = [(c.icon, c.candidates) for c in chars if c.icon]
-        if style == "showcase" and chars:
+        if chars:
             wanted += splash_for(chars[0].candidates, splash_key(chars[0]))
         fetched = await _icons(deps, wanted)
         png = await _timed_render(
-            render_profile_showcase if style == "showcase" else render_profile_card,
+            renderer("profile", style),
             result.data,
             nickname=account.get("nickname") or result.data.nickname or "Traveler",
             uid=str(account["game_uid"]),
@@ -720,8 +698,7 @@ async def _send_profile(
 
 
 async def _send_theater(
-    context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], show_all: bool,
-    previous: bool = False,
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], previous: bool = False,
 ) -> None:
     deps = _deps(context)
     try:
@@ -731,17 +708,15 @@ async def _send_theater(
         if not result.data.unlocked:
             raise NoRecords("Imaginarium Theater is not unlocked on this account yet.")
         style = await resolve_style(deps.db, user_id, "theater")
-        official = style == "official"
-        acts = sorted(result.data.acts, key=lambda a: a.number) if official else select_acts(result.data, show_all)
+        acts = sorted(result.data.acts, key=lambda a: a.number)
         if not result.data.has_data:
             raise NoRecords(
                 "No Imaginarium Theater records for the " + ("previous" if previous else "current")
                 + " season." + ("" if previous else " Try /theater previous.")
             )
         fetched = await _icons(deps, result.data.icon_candidates())
-        extra = dict(uid=str(account["game_uid"]), previous=previous) if official else {}
         png = await _timed_render(
-            render_theater_official if official else render_theater_card,
+            renderer("theater", style),
             result.data,
             nickname=account.get("nickname") or "Traveler",
             icons=fetched.images,
@@ -750,7 +725,8 @@ async def _send_theater(
             fetched_at=result.fetched_at,
             source=result.source,
             style=style,
-            **extra,
+            uid=str(account["game_uid"]),
+            previous=previous,
         )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
@@ -771,49 +747,33 @@ async def _send_theater(
 
 
 async def theater(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.effective_message
     resolved = await _resolve(update, context)
     if resolved is None:
         return
     account, user_id = resolved
     args = [a.lower() for a in context.args or []]
-    show_all = "all" in args
     previous = any(a in ("previous", "prev", "last") for a in args)
-    await _send_theater(context, update.effective_chat.id, user_id, account, show_all, previous)
+    await _send_theater(context, update.effective_chat.id, user_id, account, previous)
 
 
-async def _send_diary(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any], previous: bool) -> None:
+async def _send_diary(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, account: dict[str, Any]) -> None:
     deps = _deps(context)
     try:
         _check_cooldown(deps, user_id)
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         style = await resolve_style(deps.db, user_id, "diary")
-        if style == "official":  # every available month in one image
-            reports = await deps.provider.get_diary_months(account)
-            if not reports[0].data.found:
-                raise NoRecords("No Traveler's Diary data yet.")
-            result = reports[0]
-            png = await _timed_render(
-                render_diary_official,
-                [r.data for r in reports],
-                nickname=account.get("nickname") or "Traveler",
-                fetched_at=min(r.fetched_at for r in reports),
-                source=result.source,
-                style=style,
-            )
-            previous = False
-        else:
-            result = await deps.provider.get_diary(account, previous=previous)
-            if not result.data.found:
-                raise NoRecords("No Traveler's Diary data for that month yet." + ("" if previous else " Try /diary previous."))
-            png = await _timed_render(
-                render_diary_card,
-                result.data,
-                nickname=account.get("nickname") or "Traveler",
-                fetched_at=result.fetched_at,
-                source=result.source,
-                style=style,
-            )
+        reports = await deps.provider.get_diary_months(account)  # every available month in one image
+        if not reports[0].data.found:
+            raise NoRecords("No Traveler's Diary data yet.")
+        result = reports[0]
+        png = await _timed_render(
+            renderer("diary", style),
+            [r.data for r in reports],
+            nickname=account.get("nickname") or "Traveler",
+            fetched_at=min(r.fetched_at for r in reports),
+            source=result.source,
+            style=style,
+        )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
         return
@@ -824,7 +784,7 @@ async def _send_diary(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
 
     await context.bot.send_photo(
         chat_id, photo=io.BytesIO(png),
-        caption=f"Traveler's Diary ({'all months' if style == 'official' else 'previous month' if previous else 'this month'}) · {SOURCE_CAPTIONS[result.source]}",
+        caption=f"Traveler's Diary (all months) · {SOURCE_CAPTIONS[result.source]}",
     )
 
 
@@ -833,8 +793,7 @@ async def diary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if resolved is None:
         return
     account, user_id = resolved
-    previous = any(a.lower() in ("previous", "prev", "last") for a in context.args or [])
-    await _send_diary(context, update.effective_chat.id, user_id, account, previous)
+    await _send_diary(context, update.effective_chat.id, user_id, account)
 
 
 async def _send_stygian(
@@ -856,7 +815,7 @@ async def _send_stygian(
         fetched = await _icons(deps, result.data.icon_candidates(multi))
         style = await resolve_style(deps.db, user_id, "stygian")
         png = await _timed_render(
-            render_stygian_official if style == "official" else render_stygian_card,
+            renderer("stygian", style),
             result.data,
             nickname=account.get("nickname") or "Traveler",
             icons=fetched.images,
@@ -888,7 +847,6 @@ async def _send_stygian(
 
 
 async def stygian(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.effective_message
     resolved = await _resolve(update, context)
     if resolved is None:
         return
@@ -922,7 +880,7 @@ async def _send_character(
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
         result = await deps.provider.get_character(account, matches[0].id)
         chosen = await resolve_style(deps.db, user_id, "character")
-        styles = ["classic", "showcase", "build"] if compare else [chosen]
+        styles = list(SERVICE_STYLES["character"]) if compare else [chosen]
         wanted = result.data.icon_candidates()
         if "showcase" in styles:
             wanted += result.data.splash_candidates()
@@ -933,11 +891,7 @@ async def _send_character(
             nickname=account.get("nickname") or "Traveler", uid=str(account["game_uid"]), server=account["region"],
             icons=fetched.images, fetched_at=result.fetched_at, source=result.source,
         )
-        renderers = {"showcase": render_character_showcase, "build": render_character_build}
-        pngs = [
-            await _timed_render(renderers.get(st, render_character_card), result.data, **common, style=st)
-            for st in styles
-        ]
+        pngs = [await _timed_render(renderer("character", st), result.data, **common, style=st) for st in styles]
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
         return
@@ -958,7 +912,6 @@ async def _send_character(
 
 
 async def character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.effective_message
     resolved = await _resolve(update, context)
     if resolved is None:
         return
@@ -967,7 +920,6 @@ async def character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _profile_entry(update: Update, context: ContextTypes.DEFAULT_TYPE, show_all: bool, command: str) -> None:
-    message = update.effective_message
     resolved = await _resolve(update, context)
     if resolved is None:
         return
@@ -995,7 +947,6 @@ def _parse_abyss_args(args: list[str]) -> tuple[bool, int | None]:
 
 
 async def abyss(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.effective_message
     resolved = await _resolve(update, context)
     if resolved is None:
         return

@@ -12,13 +12,13 @@ import io
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 
 from app.regions import mask_uid
 from app.render_stygian_official import TILE_H, TILE_W, _star4, _tile, _wrap
 from app.stygian import SChar
 from app.theater import CHAR_TYPES, TAct, TChar, TheaterData
-from app.ui_kit import fit_text, font, load_icon
+from app.ui_kit import font, load_icon
 
 REPORT_VERSION = "theater-official-v1"
 W = 1080
@@ -35,7 +35,6 @@ BAR = (229, 217, 192)
 GOLD = (226, 196, 140)
 TEXT = (245, 241, 235)
 MUTED = (178, 170, 164)
-ROW = (255, 255, 255, 14)
 LINE = (255, 255, 255, 34)
 TAG = (222, 98, 98)
 

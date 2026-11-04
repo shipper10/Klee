@@ -8,7 +8,7 @@ from app.character import CharacterDetail
 from app.genshin_provider import Report
 from app.linking import utcnow
 from app.profile import ProfChar, ProfileData, find_characters
-from app.render_character import render_character_card
+from app.render_showcase import render_character_showcase
 from tests.test_abyss_flow import ACCOUNT, ctx, provider
 from tests.test_render_abyss import _icon
 
@@ -67,13 +67,13 @@ def render(c, **kw):
     args = dict(nickname="shipper", uid="712345678", server="os_asia", icons={u: _icon(u) for u, _ in c.icon_candidates()},
                 fetched_at=NOW, source="live")
     args.update(kw)
-    return render_character_card(c, **args)
+    return render_character_showcase(c, **args)
 
 
 def test_render_and_edge_cases():
     c = CharacterDetail.from_raw(raw(), 10000089)
     img = Image.open(io.BytesIO(render(c)))
-    assert img.width == 1080 and img.width + img.height < 10000
+    assert img.width == 1600 and img.width + img.height < 10000
     assert render(c) == render(c)
     render(c, icons={}, nickname="N" * 80)
     render(CharacterDetail.from_raw({"list": [{"base": {"id": 7}}]}, 7))
@@ -142,12 +142,3 @@ def test_splash_candidates_and_showcase_render():
     # no icons at all and sparse data must not crash
     sparse = CharacterDetail(id=1, name="X", element="Weird")
     Image.open(io.BytesIO(render_character_showcase(sparse, nickname="", uid="1", server="os_euro", icons={}, fetched_at=NOW, source="cached"))).verify()
-
-
-def test_showcase_style_only_for_character_and_selectable():
-    from app.styles import is_valid, pick
-
-    assert is_valid("character", "showcase") and not is_valid("zzz", "showcase")
-    rows = [{"user_id": 5, "service": "*", "style": "showcase"}]
-    assert pick(rows, 5, "character") == "showcase"
-    assert pick(rows, 5, "zzz") == "classic"  # a layout the service does not have falls back
