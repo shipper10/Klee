@@ -221,3 +221,6 @@ Official in-game element icons (UI_Icon_Element_*) are bundled in `app/assets/el
 - `app/render_theater_official.py`: library header, "Past Performances" panel (best record, stella row, flowers, support counts), statistics, then the Cast List with cream act cards, two per row. Default style for `theater` (classic stays selectable). In this style all acts are shown (the 2-column grid keeps the image short).
 - Data: `stellas` (`get_medal_round_list`) and per-act blessing level/text are parsed only if HoYoLAB sends them (`splendour_buff.summary`); otherwise those parts are simply not drawn. `/debug theater` now lists round keys to confirm.
 - Textures (library background, stella and trophy icons) from GenshinUID (GPL-3.0).
+
+## Milestone 15 - Spiral Abyss official look
+`render_abyss_official` (layout "official", default for abyss; classic stays selectable). The Challenge Summary (stars, deepest descent, battles, most played, notable stats) is always drawn on top, also for `/abyss 11` or `/abyss 12`. Chamber halves sit side by side to keep the image short. Star icons: GenshinUID textures (GPL-3.0).

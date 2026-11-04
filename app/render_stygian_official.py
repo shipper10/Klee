@@ -149,7 +149,7 @@ def _glyph(img: Image.Image, cx: int, cy: int, size: int, element: str) -> None:
     img.paste(layer, (cx - size // 2, cy - size // 2), layer)
 
 
-def _tile(img: Image.Image, d: ImageDraw.ImageDraw, x: int, y: int, c: SChar, icon: Image.Image | None) -> None:
+def _tile(img: Image.Image, d: ImageDraw.ImageDraw, x: int, y: int, c: SChar, icon: Image.Image | None, label: str | None = None) -> None:
     top, bottom = RARITY_BG.get(c.rarity, ((112, 118, 140), (76, 80, 100)))
     ramp = Image.linear_gradient("L").resize((TILE_W, TILE_H))
     tile = Image.composite(Image.new("RGB", (TILE_W, TILE_H), bottom), Image.new("RGB", (TILE_W, TILE_H), top), ramp).convert("RGBA")
@@ -165,7 +165,7 @@ def _tile(img: Image.Image, d: ImageDraw.ImageDraw, x: int, y: int, c: SChar, ic
         tile.alpha_composite(fitted)
     td = ImageDraw.Draw(tile, "RGBA")
     td.rectangle((0, TILE_H - 31, TILE_W, TILE_H), fill=(239, 230, 211, 238))
-    td.text((TILE_W / 2, TILE_H - 15), f"Lv. {c.level}", font=font("medium", 24), fill=(86, 78, 94), anchor="mm")
+    td.text((TILE_W / 2, TILE_H - 15), label if label is not None else f"Lv. {c.level}", font=font("medium", 24), fill=(86, 78, 94), anchor="mm")
     if c.constellation > 0:
         td.rounded_rectangle((TILE_W - 30, 5, TILE_W - 5, 29), radius=5, fill=(40, 34, 52, 230))
         td.text((TILE_W - 17.5, 17), str(c.constellation), font=font("semibold", 16), fill=TEXT, anchor="mm")

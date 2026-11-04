@@ -46,6 +46,7 @@ from app.render_character import render_character_card
 from app.profile import find_characters
 from app.render_stygian import render_stygian_card
 from app.render_theater import render_theater_card, select_acts
+from app.render_abyss_official import render_abyss_official
 from app.render_theater_official import render_theater_official
 from app.render_profile import render_profile_card, select_characters
 
@@ -633,7 +634,7 @@ async def _send_abyss(
         icons = fetched.images
         style = await resolve_style(deps.db, user_id, "abyss")
         png = await _timed_render(
-            render_abyss_card,
+            render_abyss_official if style == "official" else render_abyss_card,
             result.data,
             nickname=account.get("nickname") or "Traveler",
             icons=icons,
@@ -641,7 +642,7 @@ async def _send_abyss(
             tz_hours=server_utc_offset(account["region"]),
             fetched_at=result.fetched_at,
             source=result.source,
-            full_summary=floor is None,
+            full_summary=True,
             style=style,
         )
     except BotError as exc:
