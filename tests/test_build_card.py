@@ -161,3 +161,37 @@ def test_asset_manager_records_missing_without_raising():
     a = Assets()
     assert a.stat_icon(Stat("Mystery", "1")) is None and a.icon("https://x/none.png") is None
     assert "stat:Mystery" in a.missing and "icon" in a.missing
+
+
+# ---- real-payload shapes seen on a live account ----------------------------------------------------------------
+def test_core_stats_picked_by_name_across_lists_and_stamina_excluded():
+    r = raw()
+    e = r["list"][0]
+    pv = lambda t, name, final, base="0", add="0": {"property_type": t, "base": base, "add": add, "final": final, "info": {"property_type": t, "name": name}}
+    e["base_properties"] = [pv(2000, "Max HP", "18182", "13103", "5079"), pv(2001, "ATK", "2430", "1016", "1414"), pv(2002, "DEF", "923", "765", "158"),
+                            pv(28, "Elemental Mastery", "16"), pv(10, "Max Stamina", "240")]
+    e["selected_properties"] = [pv(20, "CRIT Rate", "70.2%"), pv(22, "CRIT DMG", "236.9%")]
+    e["extra_properties"] = [pv(23, "Energy Recharge", "109.1%")]
+    e["element_properties"] = [pv(40, "Pyro DMG Bonus", "46.6%"), pv(42, "Hydro DMG Bonus", "28.8%")]
+    c = CharacterDetail.from_raw(r, 10000089)  # Hydro
+    names = [s.name for s in c.core_stats]
+    assert names == ["Max HP", "ATK", "DEF", "Elemental Mastery", "CRIT Rate", "CRIT DMG", "Energy Recharge", "Hydro DMG Bonus"]
+    assert "Max Stamina" not in names and c.core_stats[0].base == "13103"
+
+
+def test_number_formatting_is_pure_formatting():
+    from app.stats import group_digits, with_plus
+    assert group_digits("18182") == "18,182" and group_digits("+5079") == "+5,079" and group_digits("46.6%") == "46.6%"
+    assert group_digits("4,780") == "4,780" and with_plus("23") == "+23" and with_plus("21.0%") == "+21.0%" and with_plus("+5") == "+5"
+    c = full(core_stats=[Stat("Max HP", "18182", base="13103", add="5079")])
+    c.artifacts[0].main = Stat("HP", "4780")
+    c.artifacts[0].subs = [Stat("CRIT DMG", "21.0%", times=3)]
+    m = build_model(c)
+    assert m.stats[0].value == "18,182" and m.stats[0].base == "13,103" and m.stats[0].bonus == "+5,079"
+    assert m.artifacts[0].main_value == "4,780" and m.artifacts[0].subs[0].value == "+21.0%"
+
+
+def test_long_weapon_name_wraps_and_renders():
+    c = full()
+    c.weapon.name = "Crimson Moon's Semblance"
+    assert render(c).size == (W, H)

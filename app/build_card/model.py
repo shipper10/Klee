@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.character import Artifact, CharacterDetail, Cons, Stat, Talent
+from app.stats import group_digits, with_plus
 
 # Weapon ascension -> max level. Exact game rule, only used when HoYoLAB sends the ascension and the weapon is 3-5 stars.
 WEAPON_MAX_LEVEL = {0: 20, 1: 40, 2: 50, 3: 60, 4: 70, 5: 80, 6: 90}
@@ -39,6 +40,7 @@ class ArtifactRow:
     rarity: int
     icon: str
     main: Stat | None
+    main_value: str
     subs: list[SubRow]
     set_name: str = ""
 
@@ -70,17 +72,17 @@ def _clean(v: str) -> str:
 
 
 def _row(s: Stat) -> StatRow:
-    base, add = _clean(s.base), _clean(s.add)
+    base, add = group_digits(s.base), group_digits(s.add)
     show = bool(base and add and add not in ("0", "+0", "0%"))
-    return StatRow(stat=s, label=LABELS.get(s.name, s.name), value=_clean(s.value), base=base if show else "", bonus=add if show else "")
+    return StatRow(stat=s, label=LABELS.get(s.name, s.name), value=group_digits(s.value), base=base if show else "", bonus=with_plus(add) if show else "")
 
 
 def _art_row(a: Artifact) -> ArtifactRow:
     subs = [
-        SubRow(stat=s, value=_clean(s.value), ticks=None if s.times is None else max(0, min(MAX_ROLL_TICKS, s.times)))
+        SubRow(stat=s, value=with_plus(s.value), ticks=None if s.times is None else max(0, min(MAX_ROLL_TICKS, s.times)))
         for s in a.subs[:4]
     ]
-    return ArtifactRow(slot=a.slot, level=a.level, rarity=a.rarity, icon=a.icon, main=a.main, subs=subs, set_name=a.set_name)
+    return ArtifactRow(slot=a.slot, level=a.level, rarity=a.rarity, icon=a.icon, main=a.main, main_value=group_digits(a.main.value) if a.main else "", subs=subs, set_name=a.set_name)
 
 
 def build_model(c: CharacterDetail) -> BuildModel:
@@ -104,7 +106,7 @@ def build_model(c: CharacterDetail) -> BuildModel:
     if w:
         m.weapon_name, m.weapon_icon, m.weapon_rarity = w.name, w.icon, w.rarity
         m.weapon_level, m.refinement = w.level, w.refinement
-        m.weapon_stats = [s for s in (w.main, w.sub) if s]
+        m.weapon_stats = [Stat(s.name, group_digits(s.value), prop=s.prop, icon=s.icon) for s in (w.main, w.sub) if s]
         asc = getattr(w, "ascension", None)
         m.weapon_max_level = WEAPON_MAX_LEVEL.get(asc) if asc is not None and w.rarity >= 3 else None
     return m

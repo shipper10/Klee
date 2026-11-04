@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from app.abyss import icon_candidates
+from app.stats import CORE_KEYS, stat_key
 
 SCHEMA_VERSION = 2
 ARTIFACT_SLOTS = {1: "Flower", 2: "Plume", 3: "Sands", 4: "Goblet", 5: "Circlet"}
@@ -226,8 +227,16 @@ class CharacterDetail:
         props = entry.get("selected_properties") or entry.get("base_properties") or []
         stats = [s for s in (stat(p, "final") for p in props) if s and s.value not in ("0", "0%", "0.0%")][:12]
         element = str(base.get("element") or "")
-        core = [s for s in (stat(p, "final") for p in entry.get("base_properties") or []) if s]
-        # DMG bonus row: the character's own element if HoYoLAB lists it with a non-zero value (exact values, selection rule only)
+        # Stat block: HP, ATK, DEF, EM, CRIT Rate, CRIT DMG, ER, then the own-element DMG bonus. HoYoLAB spreads these over
+        # base/selected/extra lists, so pick by name from all of them (first list that has it wins; base has base/add).
+        pool = [x for lst in ("base_properties", "selected_properties", "extra_properties") for x in (stat(p, "final") for p in entry.get(lst) or []) if x]
+        by_key: dict[str, Stat] = {}
+        for st in pool:
+            k = stat_key(st.name, st.value)
+            if k in CORE_KEYS and k not in by_key:
+                by_key[k] = st
+        core = [by_key[k] for k in CORE_KEYS if k in by_key]
+        # DMG bonus row: the character's own element if listed with a non-zero value (exact values, selection rule only)
         bonus = [s for s in (stat(p, "final") for p in entry.get("element_properties") or []) if s and s.value not in ("0", "0%", "0.0%")]
         own = next((s for s in bonus if element and element.lower() in s.name.lower()), None)
         if own:

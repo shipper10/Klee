@@ -21,9 +21,10 @@ from typing import Any
 from PIL import Image, ImageFont
 
 from app.character import CharacterDetail, Stat, splash_for
+from app.constants import ELEMENTS
+from app.stats import stat_key  # noqa: F401  (re-exported)
 
 ROOT = Path(__file__).parent / "assets"
-ELEMENTS = ("Cryo", "Hydro", "Pyro", "Electro", "Anemo", "Dendro", "Geo")
 
 # Provenance of every source (used for README credits and owner diagnostics).
 SOURCES = {
@@ -86,33 +87,6 @@ def validate_art(img: Image.Image | None, tier: str) -> bool:
 class Art:
     image: Image.Image | None
     tier: str  # "full" | "splash" | "icon" | "none"
-
-
-_PLAIN = re.compile(r"[^a-z]+")
-
-
-def stat_key(name: str, value: str = "") -> str | None:
-    """Logical stat icon key from the displayed name; flat vs percent is decided by the value, never guessed."""
-    n = _PLAIN.sub(" ", name.lower().replace("%", " ")).strip()
-    n = n.replace("max ", "").replace("base ", "")
-    pct = str(value).strip().endswith("%")
-    table = {
-        "hp": "hp_pct" if pct else "hp",
-        "atk": "atk_pct" if pct else "atk",
-        "def": "def_pct" if pct else "def",
-        "elemental mastery": "em",
-        "crit rate": "crit_rate",
-        "crit dmg": "crit_dmg",
-        "energy recharge": "er",
-        "healing bonus": "healing",
-        "physical dmg bonus": "physical",
-    }
-    if n in table:
-        return table[n]
-    for el in ELEMENTS:
-        if n == f"{el.lower()} dmg bonus":
-            return f"element:{el}"
-    return None
 
 
 @lru_cache(maxsize=256)

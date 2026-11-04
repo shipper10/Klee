@@ -34,6 +34,19 @@ def _txt(d: ImageDraw.ImageDraw, xy: tuple[float, float], s: str, size: int, fil
     d.text(xy, s, font=f, fill=fill, anchor=anchor)
 
 
+def _rr(img: Image.Image, box: tuple[int, int, int, int], radius: int, fill) -> None:
+    """Translucent rounded rectangle, properly blended (ImageDraw on an RGBA image would overwrite the alpha)."""
+    x0, y0, x1, y1 = (int(v) for v in box)
+    w, h = x1 - x0 + 1, y1 - y0 + 1
+    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(layer).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=fill)
+    img.alpha_composite(layer, (x0, y0))
+
+
+def _ln(img: Image.Image, p0: tuple[int, int], p1: tuple[int, int], fill, width: int = 1) -> None:
+    _rr(img, (p0[0], p0[1], p1[0], p1[1] + width - 1), 0, fill)
+
+
 def _fit(d: ImageDraw.ImageDraw, s: str, size: int, max_w: int) -> int:
     while size > 12 and d.textlength(s, font=game_font(size)) > max_w:
         size -= 1
@@ -116,7 +129,7 @@ def _left(img: Image.Image, m: BuildModel, assets: Assets, theme: BuildTheme, ni
         cy = 303 + int(i * 65.8)
         cons = next((c for c in m.cons if c.pos == i + 1), None)
         active = bool(cons and cons.active) if cons else i < m.constellation
-        _disc(img, (58, cy), 25, (14, 14, 26, 190), ring=theme.accent + (230,) if active else (255, 255, 255, 70), ring_w=2)
+        _disc(img, (58, cy), 25, (14, 14, 26, 190), ring=theme.accent + (235,) if active else theme.accent + (120,), ring_w=2)
         icon = assets.icon(cons.icon, 38) if (active and cons and cons.icon) else None
         if active and icon is not None:
             _paste(img, icon, (58 - 19, cy - 19))
@@ -173,18 +186,26 @@ def _middle(img: Image.Image, m: BuildModel, assets: Assets, theme: BuildTheme) 
         stars = assets.stars(m.weapon_rarity)
         if stars is not None:
             _paste(img, stars.resize((int(stars.width * 0.95), int(stars.height * 0.95)), Image.LANCZOS), (MID_X + 4, 154))
-        size = _fit(d, m.weapon_name, 34, MID_R - 826 - 4)
-        _txt(d, (826, 47), m.weapon_name, size, WHITE, "lm")
+        width = MID_R - 826 - 4
+        if d.textlength(m.weapon_name, font=game_font(34)) <= width:
+            _txt(d, (826, 47), m.weapon_name, 34, WHITE, "lm")
+        else:  # two lines, split at the word boundary that balances them
+            words = m.weapon_name.split()
+            cut = min(range(1, len(words)), key=lambda i: abs(len(" ".join(words[:i])) - len(" ".join(words[i:])))) if len(words) > 1 else 1
+            lines = [" ".join(words[:cut]), " ".join(words[cut:])] if len(words) > 1 else [m.weapon_name]
+            size = min(_fit(d, ln, 32, width) for ln in lines)
+            for k, ln in enumerate(lines):
+                _txt(d, (826, 36 + k * 34), ln, size, WHITE, "lm")
         x = 826
         for s in m.weapon_stats[:2]:
-            x += _chip(img, d, x, 112 if size else 112, assets.stat_icon(s, 28), s.value.replace("\xa0", " ")) + 10
+            x += _chip(img, d, x, 112, assets.stat_icon(s, 28), s.value) + 10
         y = 158
         r_w = 52
-        d.rounded_rectangle((826, y, 826 + r_w, y + 34), radius=7, fill=(0, 0, 0, 120))
+        _rr(img, (826, y, 826 + r_w, y + 34), 7, (0, 0, 0, 120))
         _txt(d, (826 + r_w / 2, y + 17), f"R{m.refinement}", 22, (240, 226, 190), "mm", shadow=False)
         lv = f"Lv. {m.weapon_level}" + (f" / {m.weapon_max_level}" if m.weapon_max_level else "")
         lw = int(d.textlength(lv, font=game_font(23))) + 22
-        d.rounded_rectangle((826 + r_w + 10, y, 826 + r_w + 10 + lw, y + 34), radius=7, fill=(0, 0, 0, 120))
+        _rr(img, (826 + r_w + 10, y, 826 + r_w + 10 + lw, y + 34), 7, (0, 0, 0, 120))
         _txt(d, (826 + r_w + 21, y + 17), lv, 23, WHITE, "lm", shadow=False)
     else:
         _txt(d, (MID_X, 90), "No weapon data", 26, MUTED, "lm")
@@ -214,14 +235,14 @@ def _middle(img: Image.Image, m: BuildModel, assets: Assets, theme: BuildTheme) 
         yy = y + (j * 30 if len(m.sets) > 1 else 0)
         size = _fit(d, name, 22, MID_R - 780 - 52)
         _txt(d, (780, yy), name, size, GREEN, "lm")
-        d.rounded_rectangle((MID_R - 36, yy - 14, MID_R, yy + 14), radius=6, fill=(0, 0, 0, 120))
+        _rr(img, (MID_R - 36, yy - 14, MID_R, yy + 14), 6, (0, 0, 0, 120))
         _txt(d, (MID_R - 18, yy), str(pieces), 20, WHITE, "mm", shadow=False)
 
 
 # ---- right column ------------------------------------------------------------------------------------------------
 def _artifact_row(img: Image.Image, a: ArtifactRow | None, idx: int, assets: Assets, theme: BuildTheme) -> None:
     y = ROW_Y0 + idx * (ROW_H + ROW_GAP)
-    layers.glass(img, (ROW_X, y, ROW_X + ROW_W, y + ROW_H), theme, 16, 150)
+    layers.glass(img, (ROW_X, y, ROW_X + ROW_W, y + ROW_H), theme, 16, 190)
     d = ImageDraw.Draw(img, "RGBA")
     if a is None:
         _txt(d, (ROW_X + ROW_W / 2, y + ROW_H / 2), "Empty slot", 24, MUTED, "mm")
@@ -238,23 +259,25 @@ def _artifact_row(img: Image.Image, a: ArtifactRow | None, idx: int, assets: Ass
     if a.main:
         mi = assets.stat_icon(a.main, 28)
         _paste(img, mi, (ROW_X + 126, y + 14))
-        d.text((ROW_X + 80, y + 66), a.main.value.replace("\xa0", " "), font=game_font(36), fill=WHITE, anchor="mm", stroke_width=3, stroke_fill=(10, 8, 14, 220))
+        d.text((ROW_X + 80, y + 66), a.main_value, font=game_font(36), fill=WHITE, anchor="mm", stroke_width=3, stroke_fill=(10, 8, 14, 220))
     stars = assets.stars(a.rarity)
     if stars is not None:
         _paste(img, stars.resize((int(stars.width * 0.72), int(stars.height * 0.72)), Image.LANCZOS), (ROW_X + 14, y + 92))
-    d.rounded_rectangle((ROW_X + 122, y + 92, ROW_X + 168, y + 114), radius=6, fill=(0, 0, 0, 150))
+    _rr(img, (ROW_X + 122, y + 92, ROW_X + 168, y + 114), 6, (0, 0, 0, 150))
     _txt(d, (ROW_X + 145, y + 103), f"+{a.level}", 17, WHITE, "mm", shadow=False)
 
+    _rr(img, (ROW_X + 182, y + 14, ROW_X + 182, y + ROW_H - 14), 0, (255, 255, 255, 40))
     for j, s in enumerate(a.subs[:4]):
         cx = ROW_X + 196 + (j % 2) * 160
         cy = y + 34 + (j // 2) * 54
+        _rr(img, (cx - 6, cy - 21, cx + 142, cy + 21), 7, (0, 0, 0, 62))
         _paste(img, assets.stat_icon(s.stat, 28), (cx, cy - 14))
         _txt(d, (cx + 36, cy), s.value, 28, WHITE, "lm")
-        d.line((cx, cy + 20, cx + 134, cy + 20), fill=(255, 255, 255, 70), width=2)
+        _rr(img, (cx, cy + 20, cx + 134, cy + 21), 0, (255, 255, 255, 70))
         if s.ticks:
             for t in range(s.ticks):
                 tx = cx + 5 + t * 14
-                d.rounded_rectangle((tx, cy + 25, tx + 9, cy + 28), radius=1, fill=theme.accent + (230,))
+                _rr(img, (tx, cy + 25, tx + 9, cy + 28), 1, theme.accent + (235,))
 
 
 # ---- entry points ------------------------------------------------------------------------------------------------
