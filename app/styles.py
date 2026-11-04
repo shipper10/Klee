@@ -30,12 +30,12 @@ LAYOUTS: dict[str, tuple[str, str]] = {
     "build": ("Build Card", "Game-style build card: full art, stat icons, artifact rolls, element-themed background."),
     "showcase": ("Showcase", "Large splash art, glass panels and element colours, in the spirit of Enka cards."),
 }
-LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["build", "showcase"], "profile": ["showcase"], "stygian": ["official"], "theater": ["official"], "abyss": ["official"], "notes": ["official"]}
+LAYOUT_SERVICES: dict[str, list[str]] = {"character": ["build", "showcase"], "profile": ["showcase"], "stygian": ["official"], "theater": ["official"], "abyss": ["official"], "notes": ["official"], "diary": ["official"]}
 SERVICE_STYLES: dict[str, list[str]] = {svc: list(THEMES) + LAYOUT_SERVICES.get(svc, []) for svc in SERVICES}
 
 
 # Built-in default per service when nobody (user or owner) has chosen anything.
-DEFAULT_STYLE: dict[str, str] = {"stygian": "official", "theater": "official", "abyss": "official", "notes": "official"}
+DEFAULT_STYLE: dict[str, str] = {"stygian": "official", "theater": "official", "abyss": "official", "notes": "official", "diary": "official"}
 
 
 def known(style: str) -> bool:

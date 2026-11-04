@@ -120,11 +120,13 @@ class GenshinProvider:
         key = "stygian:previous" if previous else "stygian:current"
         return await self._cached(account, key, STYGIAN_TTL, stygian_mod.SCHEMA_VERSION, fetch, StygianData.from_json)
 
-    async def get_diary(self, account: Mapping[str, Any], previous: bool = False) -> Report[DiaryData]:
-        async def fetch(acc: Mapping[str, Any]) -> DiaryData:
-            return await self._fetch_diary(acc, previous)
+    async def get_diary(self, account: Mapping[str, Any], previous: bool = False, back: int | None = None) -> Report[DiaryData]:
+        back = back if back is not None else int(previous)
 
-        key = "diary:previous" if previous else "diary:current"
+        async def fetch(acc: Mapping[str, Any]) -> DiaryData:
+            return await self._fetch_diary(acc, back=back)
+
+        key = {0: "diary:current", 1: "diary:previous"}.get(back, f"diary:back{back}")
         return await self._cached(account, key, DIARY_TTL, diary_mod.SCHEMA_VERSION, fetch, DiaryData.from_json)
 
     async def get_stygian_raw(self, account: Mapping[str, Any]) -> Any:
@@ -251,9 +253,22 @@ class GenshinProvider:
 
         return StygianData.from_raw(await self._call(account, call), previous=previous)
 
-    async def _fetch_diary(self, account: Mapping[str, Any], previous: bool = False) -> DiaryData:
+    async def get_diary_months(self, account: Mapping[str, Any], count: int = 3) -> list[Report[DiaryData]]:
+        """Current month and the ones before it (HoYoLAB keeps about three). The current month must work; older ones that
+        fail or are empty are simply left out."""
+        out = [await self.get_diary(account, back=0)]
+        for back in range(1, count):
+            try:
+                rep = await self.get_diary(account, back=back)
+            except Exception:
+                break
+            if rep.data.found and (rep.data.primogems or rep.data.mora):
+                out.append(rep)
+        return out
+
+    async def _fetch_diary(self, account: Mapping[str, Any], previous: bool = False, back: int | None = None) -> DiaryData:
         uid = int(account["game_uid"])
-        year, month = diary_mod.month_for(server_utc_offset(account["region"]), previous)
+        year, month = diary_mod.month_for(server_utc_offset(account["region"]), previous, back=back)
 
         async def call(client: genshin.Client) -> Any:
             return await client.request_ledger(uid, game=genshin.Game.GENSHIN, month=month)

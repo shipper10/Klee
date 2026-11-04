@@ -10,11 +10,11 @@ from typing import Any
 SCHEMA_VERSION = 1
 
 
-def month_for(region_offset_hours: int, previous: bool, now: datetime | None = None) -> tuple[int, int]:
-    """(year, month) of the diary to request, in the game server's time zone."""
+def month_for(region_offset_hours: int, previous: bool, now: datetime | None = None, back: int | None = None) -> tuple[int, int]:
+    """(year, month) of the diary to request, in the game server's time zone. `back` = months before the current one."""
     now = (now or datetime.now(timezone.utc)).astimezone(timezone(timedelta(hours=region_offset_hours)))
     year, month = now.year, now.month
-    if previous:
+    for _ in range(back if back is not None else int(previous)):
         year, month = (year - 1, 12) if month == 1 else (year, month - 1)
     return year, month
 

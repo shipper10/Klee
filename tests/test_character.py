@@ -147,7 +147,7 @@ def test_splash_candidates_and_showcase_render():
 def test_showcase_style_only_for_character_and_selectable():
     from app.styles import is_valid, pick
 
-    assert is_valid("character", "showcase") and not is_valid("diary", "showcase")
+    assert is_valid("character", "showcase") and not is_valid("zzz", "showcase")
     rows = [{"user_id": 5, "service": "*", "style": "showcase"}]
     assert pick(rows, 5, "character") == "showcase"
-    assert pick(rows, 5, "diary") == "classic"  # a layout the service does not have falls back
+    assert pick(rows, 5, "zzz") == "classic"  # a layout the service does not have falls back

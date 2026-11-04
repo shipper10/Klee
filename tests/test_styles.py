@@ -24,8 +24,8 @@ def test_pick_precedence():
     assert pick(rows, 9, "abyss") == "paper"       # owner default for that service
     assert pick(rows, 5, "notes") == "sakura"      # own "all"
     assert pick(rows, 5, "abyss") == "sakura"      # own beats owner
-    assert pick([], 5, "diary") == "classic"
-    assert pick([{"user_id": 5, "service": "*", "style": "nope"}], 5, "diary") == "classic"
+    assert pick([], 5, "zzz") == "classic"
+    assert pick([{"user_id": 5, "service": "*", "style": "nope"}], 5, "zzz") == "classic"
     assert is_valid("abyss", "paper") and not is_valid("abyss", "x") and not is_valid("zzz", "paper")
     assert current_choice(rows, 5, ALL) == "sakura" and current_choice(rows, 5, "abyss") is None
 
@@ -34,7 +34,7 @@ def test_resolve_survives_db_failure():
     class Broken:
         async def get_style_prefs(self, uid):
             raise RuntimeError("x")
-    assert asyncio.run(resolve(Broken(), 1, "diary")) == "classic"
+    assert asyncio.run(resolve(Broken(), 1, "zzz")) == "classic"
 
 
 def test_every_style_renders_and_differs():

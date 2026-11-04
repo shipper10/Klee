@@ -40,6 +40,7 @@ from app.build_card.template import render_character_build
 from app.asset_manager import plan_character_art
 from app.render_showcase_profile import render_profile_showcase, splash_key
 from app.render_diary import render_diary_card
+from app.render_diary_official import render_diary_official
 from app.render_abyss import render_abyss_card, select_floors
 from app.render_notes import render_notes_card
 from app.render_notes_official import render_notes_official
@@ -786,18 +787,33 @@ async def _send_diary(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
     try:
         _check_cooldown(deps, user_id)
         await context.bot.send_chat_action(chat_id, ChatAction.UPLOAD_PHOTO)
-        result = await deps.provider.get_diary(account, previous=previous)
-        if not result.data.found:
-            raise NoRecords("No Traveler's Diary data for that month yet." + ("" if previous else " Try /diary previous."))
         style = await resolve_style(deps.db, user_id, "diary")
-        png = await _timed_render(
-            render_diary_card,
-            result.data,
-            nickname=account.get("nickname") or "Traveler",
-            fetched_at=result.fetched_at,
-            source=result.source,
-            style=style,
-        )
+        if style == "official":  # every available month in one image
+            reports = await deps.provider.get_diary_months(account)
+            if not reports[0].data.found:
+                raise NoRecords("No Traveler's Diary data yet.")
+            result = reports[0]
+            png = await _timed_render(
+                render_diary_official,
+                [r.data for r in reports],
+                nickname=account.get("nickname") or "Traveler",
+                fetched_at=min(r.fetched_at for r in reports),
+                source=result.source,
+                style=style,
+            )
+            previous = False
+        else:
+            result = await deps.provider.get_diary(account, previous=previous)
+            if not result.data.found:
+                raise NoRecords("No Traveler's Diary data for that month yet." + ("" if previous else " Try /diary previous."))
+            png = await _timed_render(
+                render_diary_card,
+                result.data,
+                nickname=account.get("nickname") or "Traveler",
+                fetched_at=result.fetched_at,
+                source=result.source,
+                style=style,
+            )
     except BotError as exc:
         await context.bot.send_message(chat_id, exc.user_message)
         return
@@ -808,7 +824,7 @@ async def _send_diary(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id:
 
     await context.bot.send_photo(
         chat_id, photo=io.BytesIO(png),
-        caption=f"Traveler's Diary ({'previous' if previous else 'this'} month) · {SOURCE_CAPTIONS[result.source]}",
+        caption=f"Traveler's Diary ({'all months' if style == 'official' else 'previous month' if previous else 'this month'}) · {SOURCE_CAPTIONS[result.source]}",
     )
 
 
